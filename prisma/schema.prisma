@@ -1,0 +1,330 @@
+// ============================================================
+// 헬스장 직감 관리 시스템 - Prisma Schema
+// Phase 1에서는 User/Session만 실제로 사용하지만,
+// 이후 Phase에서 바로 이어서 개발할 수 있도록 전체 모델을 미리 정의해둡니다.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------- 사용자 ----------
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+enum GymPreference {
+  GYM1
+  GYM2
+  ANY
+}
+
+model User {
+  id            String        @id @default(cuid())
+  name          String
+  pinHash       String
+  role          Role          @default(USER)
+  status        UserStatus    @default(ACTIVE)
+  gymPreference GymPreference @default(ANY)
+  adminMemo     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  availabilities           Availability[]
+  assignments              DutyAssignment[]
+  complaints                Complaint[]
+  notifications             Notification[]
+  exchangeRequestsSent       DutyExchangeRequest[] @relation("Requester")
+  exchangeRequestsReceived   DutyExchangeRequest[] @relation("Replacement")
+  loginAttempts             LoginAttempt[]
+
+  @@index([status])
+  @@map("users")
+}
+
+// 로그인 시도 제한용 (5회 실패 시 잠금)
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  userId    String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("login_attempts")
+}
+
+// ---------- 헬스장 ----------
+
+model Gym {
+  id        String   @id @default(cuid())
+  name      String   @unique // 힘레븐1 / 힘레븐2
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments DutyAssignment[]
+
+  @@map("gyms")
+}
+
+// ---------- 직감 슬롯 (Phase 3+) ----------
+
+enum SlotStatus {
+  OPEN
+  LOCKED
+  COMPLETED
+  UNDERSTAFFED
+}
+
+model DutySlot {
+  id        String     @id @default(cuid())
+  date      DateTime   @db.Date
+  startTime String
+  endTime   String
+  status    SlotStatus @default(OPEN)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  availabilities Availability[]
+  assignments    DutyAssignment[]
+
+  @@unique([date, startTime])
+  @@index([date])
+  @@map("duty_slots")
+}
+
+model Availability {
+  id         String   @id @default(cuid())
+  userId     String
+  dutySlotId String
+  available  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id])
+  dutySlot DutySlot @relation(fields: [dutySlotId], references: [id])
+
+  @@unique([userId, dutySlotId])
+  @@index([dutySlotId])
+  @@map("availabilities")
+}
+
+// ---------- 배정 (Phase 4+) ----------
+
+enum AssignedType {
+  AUTO
+  MANUAL
+  EXCHANGE
+  ADMIN
+}
+
+model DutyAssignment {
+  id           String       @id @default(cuid())
+  dutySlotId   String
+  userId       String
+  gymId        String
+  assignedType AssignedType @default(AUTO)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  dutySlot DutySlot @relation(fields: [dutySlotId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  gym      Gym      @relation(fields: [gymId], references: [id])
+
+  dutyLog              DutyLog?
+  exchangeRequestsFrom DutyExchangeRequest[] @relation("SourceAssignment")
+  exchangeRequestsTo   DutyExchangeRequest[] @relation("TargetAssignment")
+  history              AssignmentHistory[]
+
+  @@unique([dutySlotId, gymId])
+  @@index([userId])
+  @@map("duty_assignments")
+}
+
+model AssignmentHistory {
+  id           String   @id @default(cuid())
+  assignmentId String
+  fromUserId   String?
+  toUserId     String?
+  changeType   String
+  reason       String?
+  changedAt    DateTime @default(now())
+
+  assignment DutyAssignment @relation(fields: [assignmentId], references: [id])
+
+  @@map("assignment_history")
+}
+
+// ---------- 직감 실행 기록 (Phase 7+) ----------
+
+enum DutyLogStatus {
+  SCHEDULED
+  NORMAL
+  LATE
+  EARLY_END
+  ABSENT
+  COMPLETED
+}
+
+model DutyLog {
+  id           String        @id @default(cuid())
+  assignmentId String        @unique
+  startedAt    DateTime?
+  endedAt      DateTime?
+  status       DutyLogStatus @default(SCHEDULED)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  assignment       DutyAssignment @relation(fields: [assignmentId], references: [id])
+  checklistResults ChecklistLog[]
+
+  @@map("duty_logs")
+}
+
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  name      String
+  required  Boolean  @default(true)
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs ChecklistLog[]
+
+  @@map("checklist_items")
+}
+
+model ChecklistLog {
+  id              String    @id @default(cuid())
+  dutyLogId       String
+  checklistItemId String
+  completed       Boolean   @default(false)
+  completedAt     DateTime?
+
+  dutyLog       DutyLog       @relation(fields: [dutyLogId], references: [id])
+  checklistItem ChecklistItem @relation(fields: [checklistItemId], references: [id])
+
+  @@unique([dutyLogId, checklistItemId])
+  @@map("checklist_logs")
+}
+
+// ---------- 직감 교환 (Phase 6+) ----------
+
+enum ExchangeType {
+  ONE_WAY
+  TWO_WAY
+}
+
+enum ExchangeStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+model DutyExchangeRequest {
+  id                 String         @id @default(cuid())
+  assignmentId       String
+  requesterId        String
+  replacementUserId  String?
+  exchangeType       ExchangeType   @default(ONE_WAY)
+  targetAssignmentId String?
+  status             ExchangeStatus @default(PENDING)
+  reason             String?
+  createdAt          DateTime       @default(now())
+  acceptedAt         DateTime?
+
+  sourceAssignment DutyAssignment  @relation("SourceAssignment", fields: [assignmentId], references: [id])
+  targetAssignment DutyAssignment? @relation("TargetAssignment", fields: [targetAssignmentId], references: [id])
+  requester        User            @relation("Requester", fields: [requesterId], references: [id])
+  replacement      User?           @relation("Replacement", fields: [replacementUserId], references: [id])
+
+  @@index([status])
+  @@map("duty_exchange_requests")
+}
+
+// ---------- 의견 / 공지 / 알림 (Phase 8+) ----------
+
+enum ComplaintStatus {
+  RECEIVED
+  IN_REVIEW
+  RESOLVED
+}
+
+model Complaint {
+  id          String          @id @default(cuid())
+  userId      String
+  title       String
+  content     String
+  isAnonymous Boolean         @default(false)
+  status      ComplaintStatus @default(RECEIVED)
+  adminReply  String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("complaints")
+}
+
+model Notice {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  isImportant Boolean  @default(false)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("notices")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  content   String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+// ---------- 감사 로그 ----------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  targetType String
+  targetId   String
+  beforeData Json?
+  afterData  Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@map("audit_logs")
+}
