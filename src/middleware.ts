@@ -5,9 +5,9 @@ import { sessionOptions, type SessionData } from "@/lib/session";
 // 로그인 없이 접근 가능한 경로
 const PUBLIC_PATHS = ["/login", "/admin-login"];
 
-// /admin/* 은 관리자 전용, 그 외 보호 경로는 일반 사용자 전용으로 취급합니다.
+// /admin/* 과 /api/admin/* 은 관리자 전용, 그 외 보호 경로는 일반 사용자 전용으로 취급합니다.
 function isAdminPath(pathname: string) {
-  return pathname.startsWith("/admin");
+  return pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
 }
 
 function isProtectedPath(pathname: string) {

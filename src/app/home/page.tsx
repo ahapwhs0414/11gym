@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireUserSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
 
@@ -10,7 +11,15 @@ export default async function UserHomePage() {
         <span className="text-sm font-semibold text-slate-900">
           직감 관리 시스템
         </span>
-        <LogoutButton redirectTo="/login" />
+        <div className="flex items-center gap-3">
+          <Link
+            href="/settings"
+            className="text-sm font-medium text-slate-600 hover:text-slate-900"
+          >
+            설정
+          </Link>
+          <LogoutButton redirectTo="/login" />
+        </div>
       </header>
 
       <main className="mx-auto max-w-md px-4 py-8">
@@ -18,7 +27,7 @@ export default async function UserHomePage() {
           {session.name}님, 안녕하세요
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Phase 1: 로그인/권한 기반이 구축되었습니다.
+          Phase 2: PIN 변경, 헬스장 선호도 설정을 이용해보세요.
         </p>
 
         <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-400">
