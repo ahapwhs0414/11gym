@@ -172,13 +172,13 @@ model AssignmentHistory {
 
 // ---------- 직감 실행 기록 (Phase 7+) ----------
 
+// 출석(정상/지각)과 퇴근(정상/조기)은 서로 독립적인 사실이라 status 하나로는 표현할 수 없다
+// (명세서 §50 월간 표는 출석/종료/상태를 별도 열로 다룬다). status는 전체 생명주기(예정 → 완료/결석)만
+// 나타내고, 지각·조기종료 여부는 별도 boolean으로 기록한다.
 enum DutyLogStatus {
   SCHEDULED
-  NORMAL
-  LATE
-  EARLY_END
-  ABSENT
   COMPLETED
+  ABSENT
 }
 
 model DutyLog {
@@ -186,6 +186,8 @@ model DutyLog {
   assignmentId String        @unique
   startedAt    DateTime?
   endedAt      DateTime?
+  startedLate  Boolean       @default(false)
+  endedEarly   Boolean       @default(false)
   status       DutyLogStatus @default(SCHEDULED)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

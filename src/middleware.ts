@@ -13,6 +13,7 @@ function isAdminPath(pathname: string) {
 function isProtectedPath(pathname: string) {
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return false;
   if (pathname.startsWith("/api/auth")) return false; // 로그인/로그아웃 API는 별도
+  if (pathname.startsWith("/api/cron")) return false; // CRON_SECRET으로 자체 인증
   if (pathname.startsWith("/_next") || pathname.startsWith("/favicon")) return false;
   return true;
 }

@@ -36,6 +36,12 @@ export default async function AdminDashboardPage() {
             사용자 관리
           </Link>
           <Link
+            href="/admin/schedule"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+          >
+            직감 전체 일정
+          </Link>
+          <Link
             href="/admin/password"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
           >
