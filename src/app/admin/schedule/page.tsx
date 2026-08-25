@@ -4,9 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { LogoutButton } from "@/components/logout-button";
 import { MarkAbsentButton } from "@/components/admin/mark-absent-button";
 import {
-  WEEKDAY_SLOT,
-  WEEKEND_SLOTS,
   addDays,
+  getDaySlotTimes,
+  getWeekendPatternDates,
   startOfWeekMonday,
   utcDateOnly,
 } from "@/lib/duty-week";
@@ -81,12 +81,11 @@ export default async function AdminSchedulePage({
 
   const todayStr = toDateOnly(new Date());
 
+  const weekendPatternDates = await getWeekendPatternDates(weekStart, weekEnd);
   const expectedRows: { date: Date; startTime: string; endTime: string }[] = [];
   for (let i = 0; i < 7; i += 1) {
     const date = addDays(weekStart, i);
-    const dow = date.getUTCDay();
-    const daySlots = dow === 0 || dow === 6 ? WEEKEND_SLOTS : [WEEKDAY_SLOT];
-    for (const s of daySlots) {
+    for (const s of getDaySlotTimes(date, weekendPatternDates)) {
       expectedRows.push({ date, startTime: s.startTime, endTime: s.endTime });
     }
   }
@@ -108,6 +107,15 @@ export default async function AdminSchedulePage({
           <h1 className="text-xl font-bold text-slate-900">직감 전체 일정</h1>
           <Link href="/admin/dashboard" className="text-sm text-teal-700 hover:underline">
             ← 대시보드
+          </Link>
+        </div>
+
+        <div className="mb-2 flex justify-end">
+          <Link
+            href="/admin/special-days"
+            className="text-sm text-teal-700 hover:underline"
+          >
+            주말형 일정(공휴일 등) 관리 →
           </Link>
         </div>
 
@@ -147,11 +155,19 @@ export default async function AdminSchedulePage({
                 const gym1 = slot?.assignments.find((a) => a.gym.name === "힘레븐1");
                 const gym2 = slot?.assignments.find((a) => a.gym.name === "힘레븐2");
                 const isPast = toDateOnly(row.date) < todayStr;
+                const dow = row.date.getUTCDay();
+                const isSpecialOverride =
+                  dow !== 0 && dow !== 6 && weekendPatternDates.has(toDateOnly(row.date));
                 return (
                   <tr key={key} className="border-b border-slate-100">
                     <td className="px-4 py-2 text-slate-700">
                       {row.date.getUTCMonth() + 1}/{row.date.getUTCDate()}(
                       {DAY_LABELS[row.date.getUTCDay()]})
+                      {isSpecialOverride && (
+                        <span className="ml-1 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">
+                          특별일정
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-slate-500">
                       {row.startTime} ~ {row.endTime}

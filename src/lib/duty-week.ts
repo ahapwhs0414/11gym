@@ -17,6 +17,10 @@ export function utcDateOnly(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
+export function toDateOnlyString(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
 export function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * DAY_MS);
 }
@@ -64,23 +68,50 @@ export function getAssignmentTargetWeekStart(now: Date = new Date()): Date {
   return addDays(getVotingTargetWeekStart(now), -7);
 }
 
-function slotDatesForWeek(weekStart: Date) {
+/** 명세서 §3.3: 이 날짜가 "주말형 일정"으로 지정되었는지(공휴일 등) 판단할 때 쓰는 날짜 집합. */
+export type WeekendPatternDates = Set<string>;
+
+export async function getWeekendPatternDates(
+  weekStart: Date,
+  weekEnd: Date
+): Promise<WeekendPatternDates> {
+  const rows = await prisma.specialScheduleDay.findMany({
+    where: { date: { gte: weekStart, lt: weekEnd } },
+  });
+  return new Set(rows.map((r) => toDateOnlyString(r.date)));
+}
+
+/** 해당 날짜가 (요일상 주말이거나 관리자가 지정한 주말형 일정이라) 3타임 패턴을 써야 하는지 판단한다. */
+export function usesWeekendPattern(date: Date, weekendPatternDates: WeekendPatternDates): boolean {
+  const dow = date.getUTCDay(); // 0=일 ... 6=토
+  return dow === 0 || dow === 6 || weekendPatternDates.has(toDateOnlyString(date));
+}
+
+/** 해당 날짜에 필요한 시간 슬롯 목록(평일 1개 또는 주말형 3개)을 반환한다. */
+export function getDaySlotTimes(date: Date, weekendPatternDates: WeekendPatternDates) {
+  return usesWeekendPattern(date, weekendPatternDates) ? WEEKEND_SLOTS : [WEEKDAY_SLOT];
+}
+
+function slotDatesForWeek(weekStart: Date, weekendPatternDates: WeekendPatternDates) {
   const results: { date: Date; startTime: string; endTime: string }[] = [];
   for (let i = 0; i < 7; i += 1) {
     const date = addDays(weekStart, i);
-    const dow = date.getUTCDay(); // 0=일 ... 6=토
-    const isWeekend = dow === 0 || dow === 6;
-    const daySlots = isWeekend ? WEEKEND_SLOTS : [WEEKDAY_SLOT];
-    for (const slot of daySlots) {
+    for (const slot of getDaySlotTimes(date, weekendPatternDates)) {
       results.push({ date, startTime: slot.startTime, endTime: slot.endTime });
     }
   }
   return results;
 }
 
-/** 해당 주(월~일)의 직감 슬롯이 없으면 생성하고, 날짜/시간 순으로 정렬해 반환한다. */
+/**
+ * 해당 주(월~일)의 직감 슬롯이 없으면 생성하고, 날짜/시간 순으로 정렬해 반환한다.
+ * 관리자가 지정한 주말형 일정(§3.3)이 있으면 해당 날짜는 3타임으로 생성한다.
+ * 이미 슬롯이 존재하는 날짜에 나중에 지정해도 기존 슬롯은 그대로 두고 나머지만 추가한다.
+ */
 export async function ensureDutySlotsForWeek(weekStart: Date): Promise<DutySlot[]> {
-  const wanted = slotDatesForWeek(weekStart);
+  const weekEnd = addDays(weekStart, 7);
+  const weekendPatternDates = await getWeekendPatternDates(weekStart, weekEnd);
+  const wanted = slotDatesForWeek(weekStart, weekendPatternDates);
 
   await prisma.dutySlot.createMany({
     data: wanted.map((slot) => ({
@@ -91,7 +122,6 @@ export async function ensureDutySlotsForWeek(weekStart: Date): Promise<DutySlot[
     skipDuplicates: true,
   });
 
-  const weekEnd = addDays(weekStart, 7);
   const slots = await prisma.dutySlot.findMany({
     where: { date: { gte: weekStart, lt: weekEnd } },
     orderBy: [{ date: "asc" }, { startTime: "asc" }],

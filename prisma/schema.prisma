@@ -108,6 +108,18 @@ model DutySlot {
   @@map("duty_slots")
 }
 
+// 명세서 §3.3: 공휴일 등으로 평일에도 주말과 동일한 3타임이 필요한 날을 관리자가 지정한다.
+// 여기 등록된 날짜는 요일과 무관하게 주말 패턴(10:30/15:00/19:30)으로 슬롯이 생성된다.
+model SpecialScheduleDay {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  reason    String?
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@map("special_schedule_days")
+}
+
 model Availability {
   id         String   @id @default(cuid())
   userId     String

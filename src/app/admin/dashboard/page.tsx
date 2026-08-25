@@ -24,11 +24,7 @@ export default async function AdminDashboardPage() {
         <h1 className="text-xl font-bold text-slate-900">
           {session.name} 관리자님
         </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Phase 2: 사용자 관리 / PIN 초기화 / 헬스장 선호도 / 관리자 비밀번호 변경
-        </p>
-
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           <Link
             href="/admin/users"
             className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800"
@@ -40,6 +36,12 @@ export default async function AdminDashboardPage() {
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
           >
             직감 전체 일정
+          </Link>
+          <Link
+            href="/admin/special-days"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+          >
+            주말형 일정 관리
           </Link>
           <Link
             href="/admin/password"
