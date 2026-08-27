@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { getLateGraceMinutes } from "@/lib/settings";
+import { getEarlyEndGraceMinutes, getLateGraceMinutes } from "@/lib/settings";
 import type { DutyLog } from "@prisma/client";
 
 export class DutyLogError extends Error {}
@@ -16,6 +16,19 @@ function slotTimeToDate(slotDate: Date, hhmm: string): Date {
     slotDate.getUTCDate()
   );
   return new Date(utcMidnight + hh * 3600000 + mm * 60000 - KST_OFFSET_MS);
+}
+
+/** `slotDate`(KST 달력일을 나타내는 UTC 자정 값)가 `instant` 시점의 KST 달력일과 같은지 확인한다. */
+export function isSameKstDay(instant: Date, slotDate: Date): boolean {
+  const kst = new Date(instant.getTime() + KST_OFFSET_MS);
+  const kstDateOnly = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate());
+  return kstDateOnly === slotDate.getTime();
+}
+
+function assertSameDay(slotDate: Date) {
+  if (!isSameKstDay(new Date(), slotDate)) {
+    throw new DutyLogError("직감 당일에만 시작·종료·수정할 수 있습니다.");
+  }
 }
 
 /** 배정에 대한 DutyLog가 없으면 생성한다 (아직 시작 전 SCHEDULED 상태). */
@@ -48,6 +61,7 @@ async function loadAssignmentForDuty(assignmentId: string, userId: string) {
 
 export async function startDuty(assignmentId: string, userId: string) {
   const assignment = await loadAssignmentForDuty(assignmentId, userId);
+  assertSameDay(assignment.dutySlot.date);
   const dutyLog = await ensureDutyLog(assignmentId);
   if (dutyLog.startedAt) {
     throw new DutyLogError("이미 시작된 직감입니다.");
@@ -72,7 +86,8 @@ export async function toggleChecklistItem(
   checklistItemId: string,
   completed: boolean
 ) {
-  await loadAssignmentForDuty(assignmentId, userId);
+  const assignment = await loadAssignmentForDuty(assignmentId, userId);
+  assertSameDay(assignment.dutySlot.date);
   const dutyLog = await ensureDutyLog(assignmentId);
   if (!dutyLog.startedAt) {
     throw new DutyLogError("먼저 직감을 시작해주세요.");
@@ -90,6 +105,7 @@ export async function toggleChecklistItem(
 
 export async function endDuty(assignmentId: string, userId: string, issueNote?: string) {
   const assignment = await loadAssignmentForDuty(assignmentId, userId);
+  assertSameDay(assignment.dutySlot.date);
   const dutyLog = await ensureDutyLog(assignmentId);
   if (!dutyLog.startedAt) {
     throw new DutyLogError("먼저 직감을 시작해주세요.");
@@ -110,7 +126,8 @@ export async function endDuty(assignmentId: string, userId: string, issueNote?: 
 
   const now = new Date();
   const scheduledEnd = slotTimeToDate(assignment.dutySlot.date, assignment.dutySlot.endTime);
-  const endedEarly = now.getTime() < scheduledEnd.getTime();
+  const graceMinutes = await getEarlyEndGraceMinutes();
+  const endedEarly = now.getTime() < scheduledEnd.getTime() - graceMinutes * 60000;
 
   return prisma.dutyLog.update({
     where: { id: dutyLog.id },
@@ -120,6 +137,39 @@ export async function endDuty(assignmentId: string, userId: string, issueNote?: 
       status: "COMPLETED",
       issueNote: issueNote?.trim() || null,
     },
+  });
+}
+
+/** 잘못 시작한 경우 취소하고 다시 시작할 수 있게 한다. 종료 전, 당일에만 가능하다. */
+export async function undoDutyStart(assignmentId: string, userId: string) {
+  const assignment = await loadAssignmentForDuty(assignmentId, userId);
+  assertSameDay(assignment.dutySlot.date);
+  const dutyLog = await ensureDutyLog(assignmentId);
+  if (!dutyLog.startedAt) {
+    throw new DutyLogError("아직 시작하지 않은 직감입니다.");
+  }
+  if (dutyLog.endedAt) {
+    throw new DutyLogError("이미 종료된 직감은 종료 취소를 먼저 해주세요.");
+  }
+
+  return prisma.dutyLog.update({
+    where: { id: dutyLog.id },
+    data: { startedAt: null, startedLate: false },
+  });
+}
+
+/** 잘못 종료한 경우 취소하고 다시 체크리스트/종료를 진행할 수 있게 한다. 당일에만 가능하다. */
+export async function undoDutyEnd(assignmentId: string, userId: string) {
+  const assignment = await loadAssignmentForDuty(assignmentId, userId);
+  assertSameDay(assignment.dutySlot.date);
+  const dutyLog = await ensureDutyLog(assignmentId);
+  if (!dutyLog.endedAt) {
+    throw new DutyLogError("아직 종료되지 않은 직감입니다.");
+  }
+
+  return prisma.dutyLog.update({
+    where: { id: dutyLog.id },
+    data: { endedAt: null, endedEarly: false, status: "SCHEDULED" },
   });
 }
 

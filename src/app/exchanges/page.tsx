@@ -27,7 +27,11 @@ export default async function ExchangesPage() {
 
   const [myUpcoming, otherActiveUsers, incoming, outgoing] = await Promise.all([
     prisma.dutyAssignment.findMany({
-      where: { userId: session.userId, dutySlot: { date: { gte: todayStart } } },
+      where: {
+        userId: session.userId,
+        dutySlot: { date: { gte: todayStart } },
+        NOT: { dutyLog: { status: "COMPLETED" } },
+      },
       include: { dutySlot: true, gym: true },
       orderBy: [{ dutySlot: { date: "asc" } }],
     }),
@@ -59,6 +63,7 @@ export default async function ExchangesPage() {
     where: {
       userId: { in: otherActiveUsers.map((u) => u.id) },
       dutySlot: { date: { gte: todayStart } },
+      NOT: { dutyLog: { status: "COMPLETED" } },
     },
     include: { dutySlot: true, gym: true },
     orderBy: [{ dutySlot: { date: "asc" } }],

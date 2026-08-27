@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUserSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureDutyLog } from "@/lib/duty-log";
+import { ensureDutyLog, isSameKstDay } from "@/lib/duty-log";
 import { LogoutButton } from "@/components/logout-button";
 import { DutyPanel } from "@/components/duty/duty-panel";
 
@@ -37,6 +37,7 @@ export default async function DutyPage({
     where: { dutyLogId: dutyLog.id },
   });
   const completedByItemId = new Map(checklistLogs.map((l) => [l.checklistItemId, l.completed]));
+  const isToday = isSameKstDay(new Date(), assignment.dutySlot.date);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -69,6 +70,7 @@ export default async function DutyPage({
 
         <DutyPanel
           assignmentId={assignmentId}
+          isToday={isToday}
           startedAt={dutyLog.startedAt?.toISOString() ?? null}
           startedLate={dutyLog.startedLate}
           endedAt={dutyLog.endedAt?.toISOString() ?? null}

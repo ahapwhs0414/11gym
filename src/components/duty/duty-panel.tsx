@@ -12,6 +12,7 @@ type ChecklistItem = {
 
 export function DutyPanel({
   assignmentId,
+  isToday,
   startedAt,
   startedLate,
   endedAt,
@@ -20,6 +21,7 @@ export function DutyPanel({
   issueNote,
 }: {
   assignmentId: string;
+  isToday: boolean;
   startedAt: string | null;
   startedLate: boolean;
   endedAt: string | null;
@@ -85,13 +87,47 @@ export function DutyPanel({
     router.refresh();
   }
 
+  async function handleUndoStart() {
+    if (!confirm("직감 시작을 취소할까요? 다시 시작 버튼을 눌러야 합니다.")) return;
+    setError(null);
+    setLoading(true);
+    const res = await fetch(`/api/duty/${assignmentId}/undo-start`, { method: "POST" });
+    const data = await res.json();
+    setLoading(false);
+    if (!res.ok) {
+      setError(data.error ?? "시작 취소에 실패했습니다.");
+      return;
+    }
+    router.refresh();
+  }
+
+  async function handleUndoEnd() {
+    if (!confirm("직감 종료를 취소할까요? 체크리스트를 다시 확인하고 종료할 수 있습니다.")) return;
+    setError(null);
+    setLoading(true);
+    const res = await fetch(`/api/duty/${assignmentId}/undo-end`, { method: "POST" });
+    const data = await res.json();
+    setLoading(false);
+    if (!res.ok) {
+      setError(data.error ?? "종료 취소에 실패했습니다.");
+      return;
+    }
+    router.refresh();
+  }
+
   return (
     <div className="mt-4 space-y-4">
+      {!isToday && (
+        <p className="rounded-lg bg-slate-100 px-3 py-2 text-center text-sm text-slate-500">
+          직감 당일에만 시작·종료·수정할 수 있습니다.
+        </p>
+      )}
+
       {!started && (
         <button
           onClick={handleStart}
-          disabled={loading}
-          className="w-full rounded-lg bg-teal-700 py-3 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:opacity-60"
+          disabled={loading || !isToday}
+          className="w-full rounded-lg bg-teal-700 py-3 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:opacity-40"
         >
           {loading ? "처리 중..." : "직감 시작"}
         </button>
@@ -99,15 +135,37 @@ export function DutyPanel({
 
       {started && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-          <p className="text-slate-700">
-            시작: {new Date(startedAt!).toLocaleTimeString("ko-KR")}{" "}
-            {startedLate && <span className="font-semibold text-amber-600">(지각)</span>}
-          </p>
-          {ended && (
-            <p className="mt-1 text-slate-700">
-              종료: {new Date(endedAt!).toLocaleTimeString("ko-KR")}{" "}
-              {endedEarly && <span className="font-semibold text-amber-600">(조기 종료)</span>}
+          <div className="flex items-center justify-between">
+            <p className="text-slate-700">
+              시작: {new Date(startedAt!).toLocaleTimeString("ko-KR")}{" "}
+              {startedLate && <span className="font-semibold text-amber-600">(지각)</span>}
             </p>
+            {!ended && isToday && (
+              <button
+                onClick={handleUndoStart}
+                disabled={loading}
+                className="shrink-0 rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 disabled:opacity-60"
+              >
+                시작 취소
+              </button>
+            )}
+          </div>
+          {ended && (
+            <div className="mt-1 flex items-center justify-between">
+              <p className="text-slate-700">
+                종료: {new Date(endedAt!).toLocaleTimeString("ko-KR")}{" "}
+                {endedEarly && <span className="font-semibold text-amber-600">(조기 종료)</span>}
+              </p>
+              {isToday && (
+                <button
+                  onClick={handleUndoEnd}
+                  disabled={loading}
+                  className="shrink-0 rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 disabled:opacity-60"
+                >
+                  종료 취소
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -119,14 +177,14 @@ export function DutyPanel({
             <label
               key={item.id}
               className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${
-                started && !ended ? "border-slate-200" : "border-slate-100 text-slate-400"
+                started && !ended && isToday ? "border-slate-200" : "border-slate-100 text-slate-400"
               }`}
             >
               <span>{item.name}</span>
               <input
                 type="checkbox"
                 checked={checked[item.id] ?? false}
-                disabled={!started || ended}
+                disabled={!started || ended || !isToday}
                 onChange={(e) => handleToggle(item.id, e.target.checked)}
                 className="h-5 w-5 accent-teal-700"
               />
@@ -157,7 +215,7 @@ export function DutyPanel({
       {started && !ended && (
         <button
           onClick={handleEnd}
-          disabled={loading || !allRequiredChecked}
+          disabled={loading || !allRequiredChecked || !isToday}
           className="w-full rounded-lg bg-slate-800 py-3 text-sm font-semibold text-white transition hover:bg-slate-900 disabled:opacity-40"
         >
           {loading ? "처리 중..." : "직감 종료"}

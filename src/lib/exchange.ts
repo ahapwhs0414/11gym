@@ -36,6 +36,10 @@ export async function createExchangeRequest(params: {
   if (toDateOnly(assignment.dutySlot.date) < today) {
     throw new ExchangeError("이미 지난 직감은 교환할 수 없습니다.");
   }
+  const sourceDutyLog = await prisma.dutyLog.findUnique({ where: { assignmentId } });
+  if (sourceDutyLog?.status === "COMPLETED") {
+    throw new ExchangeError("이미 완료된 직감은 교환할 수 없습니다.");
+  }
 
   const existingPending = await prisma.dutyExchangeRequest.findFirst({
     where: { assignmentId, status: "PENDING" },
@@ -62,6 +66,10 @@ export async function createExchangeRequest(params: {
     }
     if (toDateOnly(targetAssignment.dutySlot.date) < today) {
       throw new ExchangeError("이미 지난 직감은 교환할 수 없습니다.");
+    }
+    const targetDutyLog = await prisma.dutyLog.findUnique({ where: { assignmentId: targetAssignmentId } });
+    if (targetDutyLog?.status === "COMPLETED") {
+      throw new ExchangeError("상대방의 직감이 이미 완료되어 교환할 수 없습니다.");
     }
   }
 
@@ -140,6 +148,11 @@ export async function acceptExchangeRequest(exchangeId: string, actingUserId: st
       throw new ExchangeError("요청자가 활성 계정이 아닙니다.");
     }
 
+    const sourceDutyLog = await tx.dutyLog.findUnique({ where: { assignmentId: request.assignmentId } });
+    if (sourceDutyLog?.status === "COMPLETED") {
+      throw new ExchangeError("이미 완료된 직감은 교환할 수 없습니다.");
+    }
+
     const sourceSlot = request.sourceAssignment.dutySlot;
 
     const replacementAvailability = await tx.availability.findUnique({
@@ -158,6 +171,12 @@ export async function acceptExchangeRequest(exchangeId: string, actingUserId: st
 
     if (request.exchangeType === "TWO_WAY") {
       if (!request.targetAssignment) throw new ExchangeError("교환 대상 배정이 없습니다.");
+      const targetDutyLog = await tx.dutyLog.findUnique({
+        where: { assignmentId: request.targetAssignmentId! },
+      });
+      if (targetDutyLog?.status === "COMPLETED") {
+        throw new ExchangeError("상대방의 직감이 이미 완료되어 교환할 수 없습니다.");
+      }
       const targetSlot = request.targetAssignment.dutySlot;
 
       const requesterAvailability = await tx.availability.findUnique({
