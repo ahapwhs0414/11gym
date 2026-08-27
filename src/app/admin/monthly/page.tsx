@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { LogoutButton } from "@/components/logout-button";
+import { DeleteAssignmentButton } from "@/components/admin/delete-assignment-button";
 import {
   fetchMonthlyRows,
   computeMonthlyOverallStats,
@@ -208,6 +209,7 @@ export default async function AdminMonthlyPage({
                 <th className="px-4 py-2">상태</th>
                 <th className="px-4 py-2">교환</th>
                 <th className="px-4 py-2">문제/건의사항</th>
+                <th className="px-4 py-2">관리</th>
               </tr>
             </thead>
             <tbody>
@@ -228,11 +230,14 @@ export default async function AdminMonthlyPage({
                   <td className="max-w-[220px] truncate px-4 py-2 text-slate-500" title={r.issueNote ?? undefined}>
                     {r.issueNote ?? "-"}
                   </td>
+                  <td className="px-4 py-2">
+                    <DeleteAssignmentButton assignmentId={r.assignmentId} />
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
                     해당 조건의 기록이 없습니다.
                   </td>
                 </tr>

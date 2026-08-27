@@ -45,11 +45,16 @@ export function VotingClosurePanel({
   }
 
   async function handleReopen() {
-    if (!confirm("조기 마감을 취소하고 다시 투표를 받을까요? (이미 실행된 배정은 유지됩니다)")) {
+    if (
+      !confirm(
+        "조기 마감을 취소하고 다시 투표를 받을까요? 이 주에 이미 생성된 배정은 모두 취소되며, 배정받았던 사용자에게 알림이 갑니다."
+      )
+    ) {
       return;
     }
     setLoading(true);
     setError(null);
+    setResult(null);
     const res = await fetch("/api/admin/voting/reopen", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -61,6 +66,7 @@ export function VotingClosurePanel({
       setError(data.error ?? "재오픈에 실패했습니다.");
       return;
     }
+    setResult(`재오픈 완료: 기존 배정 ${data.cancelledAssignments}건 취소`);
     router.refresh();
   }
 
@@ -68,16 +74,17 @@ export function VotingClosurePanel({
     return (
       <div>
         <p className="text-sm text-slate-600">
-          이 주는 관리자에 의해 조기 마감되었습니다. 재오픈하면 사용자가 다시 투표할 수 있습니다
-          (이미 생성된 배정은 그대로 유지됩니다).
+          이 주는 관리자에 의해 조기 마감되었습니다. 재오픈하면 사용자가 다시 투표할 수 있고, 이 주에
+          이미 생성된 배정은 함께 취소됩니다(단, 이미 시작된 직감이 있으면 재오픈이 거부됩니다).
         </p>
         <button
           onClick={handleReopen}
           disabled={loading}
           className="mt-3 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60"
         >
-          투표 재오픈
+          {loading ? "처리 중..." : "투표 재오픈 (배정 취소)"}
         </button>
+        {result && <p className="mt-2 text-sm text-teal-700">{result}</p>}
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       </div>
     );

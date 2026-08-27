@@ -3,7 +3,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
+import { notifyUsers } from "@/lib/notify";
 import { getVotingTargetWeekStart, toDateOnlyString } from "@/lib/duty-week";
+import { cancelWeeklyAssignment, AssignmentCancelError } from "@/lib/assignment/run-weekly-assignment";
 
 const reopenSchema = z.object({
   weekStart: z
@@ -13,8 +15,8 @@ const reopenSchema = z.object({
 });
 
 /**
- * 조기 마감을 취소해 다시 투표를 받을 수 있게 한다. 이미 실행된 자동 배정 결과는 건드리지
- * 않으며(§17 idempotent), 이후 추가 투표를 반영해 미배정 슬롯을 채우려면 배정을 다시 실행한다.
+ * 조기 마감을 취소해 다시 투표를 받을 수 있게 한다. 조기 마감으로 실행됐던 자동 배정도 함께
+ * 취소한다(§15.1) — 이미 실제로 시작된 직감이 있으면 안전을 위해 취소를 거부한다.
  */
 export async function POST(request: Request) {
   const session = await getSession();
@@ -37,7 +39,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "조기 마감된 주가 아닙니다." }, { status: 404 });
   }
 
+  let result;
+  try {
+    result = await cancelWeeklyAssignment(weekStart);
+  } catch (error) {
+    if (error instanceof AssignmentCancelError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
+  }
+
   await prisma.votingClosure.delete({ where: { weekStart } });
+
+  if (result.affectedUserIds.length > 0) {
+    await notifyUsers(result.affectedUserIds, {
+      type: "ASSIGNMENT_RESULT",
+      title: "다음 주 직감 배정이 취소되었습니다.",
+      content: `${toDateOnlyString(weekStart)} 주 투표가 재오픈되어 기존 배정이 취소되었습니다. 다시 투표해주세요.`,
+    });
+  }
 
   await writeAuditLog({
     actorId: session.userId,
@@ -45,7 +65,8 @@ export async function POST(request: Request) {
     targetType: "VotingClosure",
     targetId: toDateOnlyString(weekStart),
     beforeData: { weekStart: toDateOnlyString(weekStart), reason: existing.reason },
+    afterData: { cancelledAssignments: result.cancelledAssignments },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, cancelledAssignments: result.cancelledAssignments });
 }

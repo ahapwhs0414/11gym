@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { ensureDutySlotsForWeek } from "@/lib/duty-week";
+import { addDays, ensureDutySlotsForWeek } from "@/lib/duty-week";
 import { notifyUsers } from "@/lib/notify";
 import {
   assignWeek,
@@ -14,6 +14,8 @@ const GYM_NAMES: Record<GymKey, string> = { GYM1: "힘레븐1", GYM2: "힘레븐
 function toDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
+
+export class AssignmentCancelError extends Error {}
 
 export interface WeeklyAssignmentResult {
   weekStart: string;
@@ -197,4 +199,59 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
     createdAssignments: plan.assignments.length,
     understaffedSlots,
   };
+}
+
+export interface CancelWeeklyAssignmentResult {
+  cancelledAssignments: number;
+  affectedUserIds: string[];
+}
+
+/**
+ * 투표 조기 마감 취소(재오픈) 시 그 마감으로 실행된 배정을 되돌린다. 이미 실제로 시작된
+ * 직감(DutyLog.startedAt 존재)이 하나라도 있으면 안전하게 취소를 거부한다.
+ */
+export async function cancelWeeklyAssignment(weekStart: Date): Promise<CancelWeeklyAssignmentResult> {
+  const weekEnd = addDays(weekStart, 7);
+
+  return prisma.$transaction(async (tx) => {
+    const slots = await tx.dutySlot.findMany({
+      where: { date: { gte: weekStart, lt: weekEnd } },
+    });
+    const slotIds = slots.map((s) => s.id);
+
+    const assignments = await tx.dutyAssignment.findMany({
+      where: { dutySlotId: { in: slotIds } },
+      include: { dutyLog: true },
+    });
+    if (assignments.length === 0) {
+      return { cancelledAssignments: 0, affectedUserIds: [] };
+    }
+
+    const alreadyStarted = assignments.some((a) => a.dutyLog?.startedAt);
+    if (alreadyStarted) {
+      throw new AssignmentCancelError(
+        "이미 시작된 직감이 있어 배정을 취소할 수 없습니다. 관리자 화면에서 개별 확인해주세요."
+      );
+    }
+
+    const assignmentIds = assignments.map((a) => a.id);
+
+    await tx.checklistLog.deleteMany({
+      where: { dutyLog: { assignmentId: { in: assignmentIds } } },
+    });
+    await tx.dutyLog.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
+    await tx.assignmentHistory.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
+    await tx.dutyExchangeRequest.deleteMany({
+      where: {
+        OR: [{ assignmentId: { in: assignmentIds } }, { targetAssignmentId: { in: assignmentIds } }],
+      },
+    });
+    await tx.dutyAssignment.deleteMany({ where: { id: { in: assignmentIds } } });
+    await tx.dutySlot.updateMany({ where: { id: { in: slotIds } }, data: { status: "OPEN" } });
+
+    return {
+      cancelledAssignments: assignments.length,
+      affectedUserIds: Array.from(new Set(assignments.map((a) => a.userId))),
+    };
+  });
 }

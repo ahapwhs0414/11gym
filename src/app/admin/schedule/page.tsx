@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { LogoutButton } from "@/components/logout-button";
 import { MarkAbsentButton } from "@/components/admin/mark-absent-button";
+import { DeleteAssignmentButton } from "@/components/admin/delete-assignment-button";
 import {
   addDays,
   getDaySlotTimes,
@@ -175,7 +176,10 @@ export default async function AdminSchedulePage({
                     <td className="px-4 py-2">
                       {gym1 ? (
                         <>
-                          <span className="text-slate-900">{gym1.user.name}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-900">{gym1.user.name}</span>
+                            <DeleteAssignmentButton assignmentId={gym1.id} />
+                          </div>
                           <AttendanceInfo
                             assignment={gym1}
                             dutyLog={dutyLogByAssignmentId.get(gym1.id)}
@@ -189,7 +193,10 @@ export default async function AdminSchedulePage({
                     <td className="px-4 py-2">
                       {gym2 ? (
                         <>
-                          <span className="text-slate-900">{gym2.user.name}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-900">{gym2.user.name}</span>
+                            <DeleteAssignmentButton assignmentId={gym2.id} />
+                          </div>
                           <AttendanceInfo
                             assignment={gym2}
                             dutyLog={dutyLogByAssignmentId.get(gym2.id)}
