@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { ensureDutySlotsForWeek } from "@/lib/duty-week";
+import { notifyUsers } from "@/lib/notify";
 import {
   assignWeek,
   type GymKey,
@@ -180,6 +181,14 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
       startTime: slot.startTime,
       gym: u.gym,
     };
+  });
+
+  // §18/§58: 배정이 확정되면 그 주에 배정받은 모든 사용자에게 알림을 보낸다.
+  const notifiedUserIds = Array.from(new Set(plan.assignments.map((a) => a.userId)));
+  await notifyUsers(notifiedUserIds, {
+    type: "ASSIGNMENT_RESULT",
+    title: "다음 주 직감 일정이 확정되었습니다.",
+    content: `${toDateOnly(weekStart)} 주 직감 배정 결과를 확인해주세요.`,
   });
 
   return {

@@ -49,6 +49,12 @@ export default async function AdminUsersPage() {
             />
           ))}
         </div>
+
+        <div className="mt-4">
+          <Link href="/admin/statistics" className="text-sm text-teal-700 hover:underline">
+            직감 공평성 통계 보기 →
+          </Link>
+        </div>
       </main>
     </div>
   );

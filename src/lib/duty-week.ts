@@ -47,6 +47,15 @@ export function isVotingOpen(weekStart: Date, now: Date = new Date()): boolean {
   return now.getTime() < getVotingDeadline(weekStart).getTime();
 }
 
+/** 관리자가 정규 마감(금요일 21:00) 이전에 해당 주 투표를 조기 마감시켰는지 조회한다. */
+export async function getVotingClosure(weekStart: Date) {
+  return prisma.votingClosure.findUnique({ where: { weekStart: utcDateOnly(weekStart) } });
+}
+
+export async function isVotingClosedEarly(weekStart: Date): Promise<boolean> {
+  return (await getVotingClosure(weekStart)) !== null;
+}
+
 /**
  * 현재 시각 기준으로 "아직 마감 전인 가장 빠른 다음 주"의 월요일을 반환한다.
  * 마감이 지난 주는 건너뛴다.

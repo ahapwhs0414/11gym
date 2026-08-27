@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 const GYM_LABEL: Record<string, string> = {
   GYM1: "힘레븐1",
@@ -84,7 +85,9 @@ export function UserRow({
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="font-semibold text-slate-900">{name}</p>
+          <Link href={`/admin/users/${id}`} className="font-semibold text-slate-900 hover:underline">
+            {name}
+          </Link>
           <p className="mt-0.5 text-xs text-slate-500">
             {GYM_LABEL[gymPreference] ?? gymPreference} ·{" "}
             {new Date(createdAt).toLocaleDateString("ko-KR")} 등록

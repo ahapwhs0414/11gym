@@ -1,12 +1,9 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { getLateGraceMinutes } from "@/lib/settings";
 import type { DutyLog } from "@prisma/client";
 
 export class DutyLogError extends Error {}
-
-// 지각/조기퇴근 판정 유예 시간(분). §44: "지각 기준 시간은 관리자 설정으로 둔다" —
-// 관리자가 직접 조정하는 시스템 설정 화면은 Phase 8에서 추가되며, 그 전까지의 기본값이다.
-const LATE_GRACE_MINUTES = 5;
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -58,7 +55,8 @@ export async function startDuty(assignmentId: string, userId: string) {
 
   const now = new Date();
   const scheduledStart = slotTimeToDate(assignment.dutySlot.date, assignment.dutySlot.startTime);
-  const startedLate = now.getTime() > scheduledStart.getTime() + LATE_GRACE_MINUTES * 60000;
+  const graceMinutes = await getLateGraceMinutes();
+  const startedLate = now.getTime() > scheduledStart.getTime() + graceMinutes * 60000;
 
   await ensureChecklistLogs(dutyLog.id);
 
@@ -90,7 +88,7 @@ export async function toggleChecklistItem(
   });
 }
 
-export async function endDuty(assignmentId: string, userId: string) {
+export async function endDuty(assignmentId: string, userId: string, issueNote?: string) {
   const assignment = await loadAssignmentForDuty(assignmentId, userId);
   const dutyLog = await ensureDutyLog(assignmentId);
   if (!dutyLog.startedAt) {
@@ -116,7 +114,12 @@ export async function endDuty(assignmentId: string, userId: string) {
 
   return prisma.dutyLog.update({
     where: { id: dutyLog.id },
-    data: { endedAt: now, endedEarly, status: "COMPLETED" },
+    data: {
+      endedAt: now,
+      endedEarly,
+      status: "COMPLETED",
+      issueNote: issueNote?.trim() || null,
+    },
   });
 }
 

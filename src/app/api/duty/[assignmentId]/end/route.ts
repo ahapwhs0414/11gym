@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { endDuty, DutyLogError } from "@/lib/duty-log";
 
+const endSchema = z.object({ note: z.string().trim().max(1000).optional() });
+
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ assignmentId: string }> }
 ) {
   const session = await getSession();
@@ -12,8 +15,14 @@ export async function POST(
   }
   const { assignmentId } = await params;
 
+  const body = await request.json().catch(() => ({}));
+  const parsed = endSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "입력값이 올바르지 않습니다." }, { status: 400 });
+  }
+
   try {
-    const dutyLog = await endDuty(assignmentId, session.userId);
+    const dutyLog = await endDuty(assignmentId, session.userId, parsed.data.note);
     return NextResponse.json({ ok: true, endedEarly: dutyLog.endedEarly });
   } catch (error) {
     if (error instanceof DutyLogError) {

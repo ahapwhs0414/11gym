@@ -73,6 +73,7 @@ export default async function DutyPage({
           startedLate={dutyLog.startedLate}
           endedAt={dutyLog.endedAt?.toISOString() ?? null}
           endedEarly={dutyLog.endedEarly}
+          issueNote={dutyLog.issueNote}
           checklistItems={checklistItems.map((item) => ({
             id: item.id,
             name: item.name,

@@ -13,16 +13,23 @@ export default async function UserHomePage() {
   const session = await requireUserSession();
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const [nextDuty, pendingExchangeCount] = await Promise.all([
-    prisma.dutyAssignment.findFirst({
-      where: { userId: session.userId, dutySlot: { date: { gte: new Date(todayStr) } } },
-      include: { dutySlot: true, gym: true },
-      orderBy: [{ dutySlot: { date: "asc" } }],
-    }),
-    prisma.dutyExchangeRequest.count({
-      where: { replacementUserId: session.userId, status: "PENDING" },
-    }),
-  ]);
+  const [nextDuty, pendingExchangeCount, unreadNotificationCount, importantNotices] =
+    await Promise.all([
+      prisma.dutyAssignment.findFirst({
+        where: { userId: session.userId, dutySlot: { date: { gte: new Date(todayStr) } } },
+        include: { dutySlot: true, gym: true },
+        orderBy: [{ dutySlot: { date: "asc" } }],
+      }),
+      prisma.dutyExchangeRequest.count({
+        where: { replacementUserId: session.userId, status: "PENDING" },
+      }),
+      prisma.notification.count({ where: { userId: session.userId, readAt: null } }),
+      prisma.notice.findMany({
+        where: { isImportant: true },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+      }),
+    ]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -31,6 +38,17 @@ export default async function UserHomePage() {
           직감 관리 시스템
         </span>
         <div className="flex items-center gap-3">
+          <Link
+            href="/notifications"
+            className="relative text-sm font-medium text-slate-600 hover:text-slate-900"
+          >
+            알림
+            {unreadNotificationCount > 0 && (
+              <span className="absolute -right-2 -top-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                {unreadNotificationCount}
+              </span>
+            )}
+          </Link>
           <Link
             href="/settings"
             className="text-sm font-medium text-slate-600 hover:text-slate-900"
@@ -45,6 +63,21 @@ export default async function UserHomePage() {
         <h1 className="text-xl font-bold text-slate-900">
           {session.name}님, 안녕하세요
         </h1>
+
+        {importantNotices.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {importantNotices.map((notice) => (
+              <Link
+                key={notice.id}
+                href="/notices"
+                className="block rounded-2xl border border-amber-200 bg-amber-50 p-4"
+              >
+                <p className="text-xs font-semibold text-amber-700">중요 공지</p>
+                <p className="mt-0.5 text-sm font-semibold text-amber-900">{notice.title}</p>
+              </Link>
+            ))}
+          </div>
+        )}
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-semibold text-slate-900">다음 직감</p>
@@ -101,6 +134,21 @@ export default async function UserHomePage() {
             </span>
           )}
         </Link>
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <Link
+            href="/notices"
+            className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700 transition hover:border-teal-300"
+          >
+            공지사항
+          </Link>
+          <Link
+            href="/complaints"
+            className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700 transition hover:border-teal-300"
+          >
+            의견 제시
+          </Link>
+        </div>
       </main>
     </div>
   );

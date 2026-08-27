@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { ensureDutySlotsForWeek, getVotingTargetWeekStart, isVotingOpen } from "@/lib/duty-week";
+import {
+  ensureDutySlotsForWeek,
+  getVotingTargetWeekStart,
+  isVotingClosedEarly,
+  isVotingOpen,
+} from "@/lib/duty-week";
 
 const voteSchema = z.object({
   allUnavailable: z.boolean(),
@@ -30,7 +35,7 @@ export async function POST(request: Request) {
   }
 
   const weekStart = getVotingTargetWeekStart();
-  if (!isVotingOpen(weekStart)) {
+  if (!isVotingOpen(weekStart) || (await isVotingClosedEarly(weekStart))) {
     return NextResponse.json({ error: "이번 주 투표는 마감되었습니다." }, { status: 409 });
   }
 

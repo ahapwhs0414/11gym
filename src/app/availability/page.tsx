@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { requireUserSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureDutySlotsForWeek, getVotingDeadline, getVotingTargetWeekStart } from "@/lib/duty-week";
+import {
+  ensureDutySlotsForWeek,
+  getVotingClosure,
+  getVotingDeadline,
+  getVotingTargetWeekStart,
+} from "@/lib/duty-week";
 import { LogoutButton } from "@/components/logout-button";
 import { AvailabilityForm } from "@/components/availability/availability-form";
 
@@ -23,7 +28,10 @@ export default async function AvailabilityPage() {
 
   const weekStart = getVotingTargetWeekStart();
   const deadline = getVotingDeadline(weekStart);
-  const slots = await ensureDutySlotsForWeek(weekStart);
+  const [slots, closure] = await Promise.all([
+    ensureDutySlotsForWeek(weekStart),
+    getVotingClosure(weekStart),
+  ]);
 
   const existing = await prisma.availability.findMany({
     where: { userId: session.userId, dutySlotId: { in: slots.map((s) => s.id) } },
@@ -63,14 +71,21 @@ export default async function AvailabilityPage() {
             {formatDate(weekStart)} ~ {formatDate(new Date(weekStart.getTime() + 6 * 86400000))} 주
           </p>
           <p className="mt-1">투표 마감: {formatDateTime(deadline)}</p>
-          {hasSubmitted && <p className="mt-1 text-amber-700">이미 제출한 내용을 수정할 수 있습니다.</p>}
+          {closure && (
+            <p className="mt-1 font-semibold text-red-700">
+              관리자에 의해 조기 마감되었습니다. 더 이상 수정할 수 없습니다.
+            </p>
+          )}
+          {!closure && hasSubmitted && (
+            <p className="mt-1 text-amber-700">이미 제출한 내용을 수정할 수 있습니다.</p>
+          )}
         </div>
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="mb-4 text-xs text-slate-500">
             기본값은 모두 &ldquo;불가능&rdquo;입니다. 직감을 설 수 있는 시간만 켜주세요.
           </p>
-          <AvailabilityForm slots={formSlots} hasSubmitted={hasSubmitted} />
+          <AvailabilityForm slots={formSlots} hasSubmitted={hasSubmitted} readOnly={!!closure} />
         </div>
       </main>
     </div>

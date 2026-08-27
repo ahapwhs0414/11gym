@@ -201,6 +201,8 @@ model DutyLog {
   startedLate  Boolean       @default(false)
   endedEarly   Boolean       @default(false)
   status       DutyLogStatus @default(SCHEDULED)
+  // 직감 종료 시 선택적으로 남기는 문제 사항/건의 사항. 필수 아님(§46은 필수 체크리스트만 요구).
+  issueNote    String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -322,6 +324,31 @@ model Notification {
 
   @@index([userId, readAt])
   @@map("notifications")
+}
+
+// 관리자가 특정 주의 투표를 정규 마감 시각(금요일 21:00) 이전에 조기 마감시킨 기록.
+// 조기 마감 시 즉시 해당 주 자동 배정을 실행한다(§17과 동일한 절차, 트리거만 수동).
+model VotingClosure {
+  id        String   @id @default(cuid())
+  weekStart DateTime @unique @db.Date
+  closedBy  String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@map("voting_closures")
+}
+
+// ---------- 시스템 설정 (Phase 8+) ----------
+
+// key-value 형태의 시스템 설정. 예: LATE_GRACE_MINUTES(지각 유예 시간, 분).
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
 }
 
 // ---------- 감사 로그 ----------

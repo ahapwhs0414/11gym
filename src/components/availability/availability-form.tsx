@@ -15,9 +15,11 @@ type Slot = {
 export function AvailabilityForm({
   slots,
   hasSubmitted,
+  readOnly = false,
 }: {
   slots: Slot[];
   hasSubmitted: boolean;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const initialAllUnavailable = hasSubmitted && slots.every((s) => !s.available);
@@ -106,7 +108,7 @@ export function AvailabilityForm({
                     <input
                       type="checkbox"
                       checked={checked}
-                      disabled={allUnavailable}
+                      disabled={allUnavailable || readOnly}
                       onChange={() => toggleSlot(slot.id)}
                       className="h-5 w-5 accent-teal-700"
                     />
@@ -122,6 +124,7 @@ export function AvailabilityForm({
         <input
           type="checkbox"
           checked={allUnavailable}
+          disabled={readOnly}
           onChange={toggleAllUnavailable}
           className="h-5 w-5 accent-teal-700"
         />
@@ -139,10 +142,10 @@ export function AvailabilityForm({
 
       <button
         onClick={handleSave}
-        disabled={loading}
+        disabled={loading || readOnly}
         className="mt-4 w-full rounded-lg bg-teal-700 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:opacity-60"
       >
-        {loading ? "저장 중..." : "저장"}
+        {readOnly ? "마감됨" : loading ? "저장 중..." : "저장"}
       </button>
     </div>
   );

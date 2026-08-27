@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { notifyUser } from "@/lib/notify";
 import type { ExchangeType } from "@prisma/client";
 
 export class ExchangeError extends Error {}
@@ -64,7 +65,7 @@ export async function createExchangeRequest(params: {
     }
   }
 
-  return prisma.dutyExchangeRequest.create({
+  const created = await prisma.dutyExchangeRequest.create({
     data: {
       assignmentId,
       requesterId,
@@ -74,6 +75,15 @@ export async function createExchangeRequest(params: {
       reason,
     },
   });
+
+  await notifyUser({
+    userId: replacementUserId,
+    type: "EXCHANGE_REQUEST",
+    title: "직감 교환 요청이 도착했습니다.",
+    content: `${toDateOnly(assignment.dutySlot.date)} ${assignment.dutySlot.startTime} 직감 교환 요청이 있습니다.`,
+  });
+
+  return created;
 }
 
 export async function cancelExchangeRequest(exchangeId: string, actingUserId: string) {

@@ -17,6 +17,7 @@ export function DutyPanel({
   endedAt,
   endedEarly,
   checklistItems,
+  issueNote,
 }: {
   assignmentId: string;
   startedAt: string | null;
@@ -24,11 +25,13 @@ export function DutyPanel({
   endedAt: string | null;
   endedEarly: boolean;
   checklistItems: ChecklistItem[];
+  issueNote: string | null;
 }) {
   const router = useRouter();
   const [checked, setChecked] = useState<Record<string, boolean>>(
     Object.fromEntries(checklistItems.map((c) => [c.id, c.completed]))
   );
+  const [note, setNote] = useState(issueNote ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -68,7 +71,11 @@ export function DutyPanel({
   async function handleEnd() {
     setError(null);
     setLoading(true);
-    const res = await fetch(`/api/duty/${assignmentId}/end`, { method: "POST" });
+    const res = await fetch(`/api/duty/${assignmentId}/end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: note.trim() || undefined }),
+    });
     const data = await res.json();
     setLoading(false);
     if (!res.ok) {
@@ -129,6 +136,25 @@ export function DutyPanel({
       </div>
 
       {started && !ended && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <label className="text-sm font-semibold text-slate-900">
+            문제 사항 / 건의 사항 <span className="font-normal text-slate-400">(선택)</span>
+          </label>
+          <p className="mt-1 text-xs text-slate-500">
+            직감 중 발생한 문제나 건의할 내용이 있다면 자유롭게 적어주세요. 작성하지 않아도 종료할 수
+            있습니다.
+          </p>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+            maxLength={1000}
+            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+          />
+        </div>
+      )}
+
+      {started && !ended && (
         <button
           onClick={handleEnd}
           disabled={loading || !allRequiredChecked}
@@ -139,9 +165,17 @@ export function DutyPanel({
       )}
 
       {ended && (
-        <p className="rounded-lg bg-teal-50 px-3 py-2 text-center text-sm font-semibold text-teal-700">
-          직감이 종료되었습니다.
-        </p>
+        <>
+          <p className="rounded-lg bg-teal-50 px-3 py-2 text-center text-sm font-semibold text-teal-700">
+            직감이 종료되었습니다.
+          </p>
+          {issueNote && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-semibold text-slate-500">제출한 문제/건의 사항</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{issueNote}</p>
+            </div>
+          )}
+        </>
       )}
 
       {error && (
