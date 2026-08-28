@@ -46,11 +46,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "이미 조기 마감된 주입니다." }, { status: 409 });
   }
 
+  // 배정을 먼저 실행하고, 성공했을 때만 조기 마감 기록을 남긴다.
+  // 순서가 반대이면 배정 중 오류가 발생했을 때 "조기 마감됨" 기록만 남고 배정은 비어있는
+  // 상태가 되어, 관리자가 같은 버튼으로 재시도할 수 없는 상황(이미 조기 마감된 주입니다)에
+  // 빠지게 된다.
+  const result = await runWeeklyAssignment(weekStart);
+
   await prisma.votingClosure.create({
     data: { weekStart, closedBy: session.userId, reason: parsed.data.reason },
   });
-
-  const result = await runWeeklyAssignment(weekStart);
 
   await writeAuditLog({
     actorId: session.userId,
