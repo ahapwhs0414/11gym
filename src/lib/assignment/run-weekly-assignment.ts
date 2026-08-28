@@ -32,11 +32,10 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
   const slots = await ensureDutySlotsForWeek(weekStart);
   const slotIds = slots.map((s) => s.id);
 
-  const existingAssignments = await prisma.dutyAssignment.findMany({
-    where: { dutySlotId: { in: slotIds } },
-  });
-
-  const gyms = await prisma.gym.findMany();
+  const [existingAssignments, gyms] = await Promise.all([
+    prisma.dutyAssignment.findMany({ where: { dutySlotId: { in: slotIds } } }),
+    prisma.gym.findMany(),
+  ]);
   const gymIdByKey: Record<GymKey, string | undefined> = {
     GYM1: gyms.find((g) => g.name === GYM_NAMES.GYM1)?.id,
     GYM2: gyms.find((g) => g.name === GYM_NAMES.GYM2)?.id,
@@ -68,13 +67,25 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
     };
   }
 
-  const activeUsers = await prisma.user.findMany({
-    where: { role: "USER", status: "ACTIVE" },
-  });
-
-  const availabilityRows = await prisma.availability.findMany({
-    where: { dutySlotId: { in: pendingSlots.map((s) => s.id) }, available: true },
-  });
+  // 아래 다섯 쿼리는 서로 독립적이므로 병렬로 실행해 왕복 지연을 줄인다.
+  // 특히 누적 통계는 예전처럼 DutyAssignment 전체 이력을 통째로 읽어와 자바스크립트로
+  // 집계하면 이력이 쌓일수록(주마다 계속 늘어남) 갈수록 느려지므로, DB에서 집계해서
+  // 사용자 수만큼의 행만 받아오도록 바꿨다.
+  const [activeUsers, availabilityRows, countByUser, countByUserGym, lastDateRows] =
+    await Promise.all([
+      prisma.user.findMany({ where: { role: "USER", status: "ACTIVE" } }),
+      prisma.availability.findMany({
+        where: { dutySlotId: { in: pendingSlots.map((s) => s.id) }, available: true },
+      }),
+      prisma.dutyAssignment.groupBy({ by: ["userId"], _count: { _all: true } }),
+      prisma.dutyAssignment.groupBy({ by: ["userId", "gymId"], _count: { _all: true } }),
+      prisma.$queryRaw<{ userId: string; lastDate: Date }[]>`
+        SELECT da."userId" AS "userId", MAX(ds."date") AS "lastDate"
+        FROM duty_assignments da
+        JOIN duty_slots ds ON ds.id = da."dutySlotId"
+        GROUP BY da."userId"
+      `,
+    ]);
   const candidatesBySlot = new Map<string, string[]>();
   for (const row of availabilityRows) {
     const arr = candidatesBySlot.get(row.dutySlotId) ?? [];
@@ -98,24 +109,18 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
     assignedDatesByUser.set(a.userId, set);
   }
 
-  const historicalAssignments = await prisma.dutyAssignment.findMany({
-    select: { userId: true, gymId: true, dutySlot: { select: { date: true } } },
-  });
-  const cumulativeCount = new Map<string, number>();
+  const cumulativeCount = new Map<string, number>(
+    countByUser.map((r) => [r.userId, r._count._all])
+  );
   const cumulativeGym1 = new Map<string, number>();
   const cumulativeGym2 = new Map<string, number>();
-  const lastAssignedDate = new Map<string, string>();
-  for (const a of historicalAssignments) {
-    cumulativeCount.set(a.userId, (cumulativeCount.get(a.userId) ?? 0) + 1);
-    if (a.gymId === gymIdByKey.GYM1) {
-      cumulativeGym1.set(a.userId, (cumulativeGym1.get(a.userId) ?? 0) + 1);
-    } else if (a.gymId === gymIdByKey.GYM2) {
-      cumulativeGym2.set(a.userId, (cumulativeGym2.get(a.userId) ?? 0) + 1);
-    }
-    const dateStr = toDateOnly(a.dutySlot.date);
-    const prev = lastAssignedDate.get(a.userId);
-    if (!prev || dateStr > prev) lastAssignedDate.set(a.userId, dateStr);
+  for (const r of countByUserGym) {
+    if (r.gymId === gymIdByKey.GYM1) cumulativeGym1.set(r.userId, r._count._all);
+    else if (r.gymId === gymIdByKey.GYM2) cumulativeGym2.set(r.userId, r._count._all);
   }
+  const lastAssignedDate = new Map<string, string>(
+    lastDateRows.map((r) => [r.userId, toDateOnly(r.lastDate)])
+  );
 
   const userInputs: UserInput[] = activeUsers.map((u) => ({
     id: u.id,
@@ -153,24 +158,36 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
   });
 
   await prisma.$transaction(async (tx) => {
-    for (const entry of plan.assignments) {
-      await tx.dutyAssignment.create({
-        data: {
+    if (plan.assignments.length > 0) {
+      await tx.dutyAssignment.createMany({
+        data: plan.assignments.map((entry) => ({
           dutySlotId: entry.slotId,
           userId: entry.userId,
           gymId: gymIdByKey[entry.gym]!,
           assignedType: "AUTO",
-        },
+        })),
       });
     }
 
+    // 슬롯마다 update()를 왕복 호출하는 대신, 상태별로 묶어서 updateMany 두 번으로 끝낸다.
+    const completedSlotIds: string[] = [];
+    const understaffedSlotIds: string[] = [];
     for (const slot of pendingSlots) {
       const filledCount =
         plan.assignments.filter((a) => a.slotId === slot.id).length +
         existingAssignments.filter((a) => a.dutySlotId === slot.id).length;
-      await tx.dutySlot.update({
-        where: { id: slot.id },
-        data: { status: filledCount >= 2 ? "COMPLETED" : "UNDERSTAFFED" },
+      (filledCount >= 2 ? completedSlotIds : understaffedSlotIds).push(slot.id);
+    }
+    if (completedSlotIds.length > 0) {
+      await tx.dutySlot.updateMany({
+        where: { id: { in: completedSlotIds } },
+        data: { status: "COMPLETED" },
+      });
+    }
+    if (understaffedSlotIds.length > 0) {
+      await tx.dutySlot.updateMany({
+        where: { id: { in: understaffedSlotIds } },
+        data: { status: "UNDERSTAFFED" },
       });
     }
   });
