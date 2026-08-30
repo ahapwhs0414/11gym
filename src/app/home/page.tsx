@@ -116,6 +116,13 @@ export default async function UserHomePage() {
         </Link>
 
         <Link
+          href="/schedule/all"
+          className="mt-3 block rounded-2xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700 transition hover:border-teal-300"
+        >
+          직감 전체 일정 (전체 사용자) →
+        </Link>
+
+        <Link
           href="/availability"
           className="mt-3 block rounded-2xl border border-teal-200 bg-teal-50 p-5 transition hover:border-teal-300"
         >

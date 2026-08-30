@@ -50,6 +50,12 @@ export default async function SchedulePage({
           </Link>
         </div>
 
+        <div className="mb-4 flex justify-end">
+          <Link href="/schedule/all" className="text-sm text-teal-700 hover:underline">
+            전체 사용자 일정 보기 →
+          </Link>
+        </div>
+
         <div className="mb-4 flex gap-2">
           <Link
             href="/schedule?view=list"

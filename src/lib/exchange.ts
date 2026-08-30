@@ -121,8 +121,9 @@ export async function rejectExchangeRequest(exchangeId: string, actingUserId: st
 }
 
 /**
- * 명세서 §40의 검증을 모두 통과해야 수락이 확정된다:
- * 상대방 활성 계정 여부, 해당 시간 가능 여부, 동일 날짜 중복 방지, 하루 2회 방지.
+ * 다음 검증을 모두 통과해야 수락이 확정된다:
+ * 상대방/요청자 활성 계정 여부, 동일 날짜 중복 방지, 하루 2회 방지, 이미 완료된 직감이 아닌지.
+ * (기존에 있던 "해당 시간에 가능하다고 투표했는지" 제한은 제거되었다 — 투표 여부와 무관하게 교환 가능.)
  */
 export async function acceptExchangeRequest(exchangeId: string, actingUserId: string) {
   await prisma.$transaction(async (tx) => {
@@ -155,13 +156,6 @@ export async function acceptExchangeRequest(exchangeId: string, actingUserId: st
 
     const sourceSlot = request.sourceAssignment.dutySlot;
 
-    const replacementAvailability = await tx.availability.findUnique({
-      where: { userId_dutySlotId: { userId: actingUserId, dutySlotId: sourceSlot.id } },
-    });
-    if (!replacementAvailability?.available) {
-      throw new ExchangeError("해당 시간에 가능하다고 표시하지 않았습니다.");
-    }
-
     const replacementSameDay = await tx.dutyAssignment.findMany({
       where: { userId: actingUserId, dutySlot: { date: sourceSlot.date } },
     });
@@ -178,13 +172,6 @@ export async function acceptExchangeRequest(exchangeId: string, actingUserId: st
         throw new ExchangeError("상대방의 직감이 이미 완료되어 교환할 수 없습니다.");
       }
       const targetSlot = request.targetAssignment.dutySlot;
-
-      const requesterAvailability = await tx.availability.findUnique({
-        where: { userId_dutySlotId: { userId: request.requesterId, dutySlotId: targetSlot.id } },
-      });
-      if (!requesterAvailability?.available) {
-        throw new ExchangeError("요청자가 상대방 시간에 가능하다고 표시하지 않았습니다.");
-      }
 
       const requesterSameDay = await tx.dutyAssignment.findMany({
         where: { userId: request.requesterId, dutySlot: { date: targetSlot.date } },

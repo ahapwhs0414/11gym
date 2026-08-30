@@ -31,6 +31,7 @@ const NAV_LINKS = [
   { href: "/admin/notices", label: "공지 관리" },
   { href: "/admin/audit-logs", label: "감사 로그" },
   { href: "/admin/special-days", label: "주말형 일정 관리" },
+  { href: "/admin/checklist", label: "체크리스트 관리" },
   { href: "/admin/settings", label: "시스템 설정" },
   { href: "/admin/password", label: "비밀번호 변경" },
 ];
