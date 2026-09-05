@@ -66,7 +66,7 @@ export default async function AdminSchedulePage({
       : startOfWeekMonday(new Date());
   const weekEnd = addDays(weekStart, 7);
 
-  const [slots, activeUsers] = await Promise.all([
+  const [slots, activeUsers, gyms] = await Promise.all([
     prisma.dutySlot.findMany({
       where: { date: { gte: weekStart, lt: weekEnd } },
       include: {
@@ -79,8 +79,13 @@ export default async function AdminSchedulePage({
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    prisma.gym.findMany({
+      where: { name: { in: ["힘레븐1", "힘레븐2"] }, status: "ACTIVE" },
+      select: { id: true, name: true },
+    }),
   ]);
   const slotByKey = new Map(slots.map((s) => [`${toDateOnly(s.date)}_${s.startTime}`, s]));
+  const gymIdByName = new Map(gyms.map((gym) => [gym.name, gym.id]));
 
   const assignmentIds = slots.flatMap((s) => s.assignments.map((a) => a.id));
   const dutyLogs = await prisma.dutyLog.findMany({
@@ -194,10 +199,10 @@ export default async function AdminSchedulePage({
                             isPast={isPast}
                           />
                         </>
-                      ) : slot ? (
+                      ) : slot && gymIdByName.has("힘레븐1") ? (
                         <ManualAssignmentButton
                           dutySlotId={slot.id}
-                          gymId={slot.assignments.find((a) => a.gym.name === "힘레븐1")?.gymId ?? ""}
+                          gymId={gymIdByName.get("힘레븐1")!}
                           gymName="힘레븐1"
                           users={activeUsers}
                         />
@@ -218,12 +223,10 @@ export default async function AdminSchedulePage({
                             isPast={isPast}
                           />
                         </>
-                      ) : slot ? (
+                      ) : slot && gymIdByName.has("힘레븐2") ? (
                         <ManualAssignmentButton
                           dutySlotId={slot.id}
-                          gymId={
-                            slot.assignments.find((a) => a.gym.name === "힘레븐2")?.gymId ?? ""
-                          }
+                          gymId={gymIdByName.get("힘레븐2")!}
                           gymName="힘레븐2"
                           users={activeUsers}
                         />
