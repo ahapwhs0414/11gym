@@ -107,9 +107,7 @@ export function AvailabilityForm({
                       <span>
                         {slot.startTime} ~ {slot.endTime}
                       </span>
-                      <span className="text-xs text-slate-400">
-                        {slot.voteCount}명 투표
-                      </span>
+                      <span>{slot.voteCount}명</span>
                     </span>
                     <input
                       type="checkbox"
