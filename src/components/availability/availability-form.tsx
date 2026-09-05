@@ -10,6 +10,7 @@ type Slot = {
   startTime: string;
   endTime: string;
   available: boolean;
+  voteCount: number;
 };
 
 export function AvailabilityForm({
@@ -102,8 +103,13 @@ export function AvailabilityForm({
                         : "border-slate-200"
                     }`}
                   >
-                    <span>
-                      {slot.startTime} ~ {slot.endTime}
+                    <span className="flex items-center gap-2">
+                      <span>
+                        {slot.startTime} ~ {slot.endTime}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {slot.voteCount}명 투표
+                      </span>
                     </span>
                     <input
                       type="checkbox"
