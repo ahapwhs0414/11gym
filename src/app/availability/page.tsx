@@ -33,10 +33,22 @@ export default async function AvailabilityPage() {
     getVotingClosure(weekStart),
   ]);
 
-  const existing = await prisma.availability.findMany({
-    where: { userId: session.userId, dutySlotId: { in: slots.map((s) => s.id) } },
-  });
+  const slotIds = slots.map((slot) => slot.id);
+  const [existing, voteCounts] = await Promise.all([
+    prisma.availability.findMany({
+      where: { userId: session.userId, dutySlotId: { in: slotIds } },
+    }),
+    prisma.availability.groupBy({
+      by: ["dutySlotId"],
+      where: { dutySlotId: { in: slotIds }, available: true },
+      _count: { _all: true },
+    }),
+  ]);
+
   const availableMap = new Map(existing.map((a) => [a.dutySlotId, a.available]));
+  const voteCountMap = new Map(
+    voteCounts.map((item) => [item.dutySlotId, item._count._all])
+  );
 
   const formSlots = slots.map((slot) => ({
     id: slot.id,
@@ -45,6 +57,7 @@ export default async function AvailabilityPage() {
     startTime: slot.startTime,
     endTime: slot.endTime,
     available: availableMap.get(slot.id) ?? false,
+    voteCount: voteCountMap.get(slot.id) ?? 0,
   }));
 
   const hasSubmitted = existing.length > 0;
