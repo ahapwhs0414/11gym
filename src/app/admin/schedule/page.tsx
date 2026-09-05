@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { LogoutButton } from "@/components/logout-button";
 import { MarkAbsentButton } from "@/components/admin/mark-absent-button";
 import { DeleteAssignmentButton } from "@/components/admin/delete-assignment-button";
+import { ManualAssignmentButton } from "@/components/admin/manual-assignment-button";
 import {
   addDays,
   getDaySlotTimes,
@@ -65,13 +66,20 @@ export default async function AdminSchedulePage({
       : startOfWeekMonday(new Date());
   const weekEnd = addDays(weekStart, 7);
 
-  const slots = await prisma.dutySlot.findMany({
-    where: { date: { gte: weekStart, lt: weekEnd } },
-    include: {
-      assignments: { include: { user: true, gym: true } },
-    },
-    orderBy: [{ date: "asc" }, { startTime: "asc" }],
-  });
+  const [slots, activeUsers] = await Promise.all([
+    prisma.dutySlot.findMany({
+      where: { date: { gte: weekStart, lt: weekEnd } },
+      include: {
+        assignments: { include: { user: true, gym: true } },
+      },
+      orderBy: [{ date: "asc" }, { startTime: "asc" }],
+    }),
+    prisma.user.findMany({
+      where: { status: "ACTIVE", role: "USER" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
   const slotByKey = new Map(slots.map((s) => [`${toDateOnly(s.date)}_${s.startTime}`, s]));
 
   const assignmentIds = slots.flatMap((s) => s.assignments.map((a) => a.id));
@@ -186,6 +194,13 @@ export default async function AdminSchedulePage({
                             isPast={isPast}
                           />
                         </>
+                      ) : slot ? (
+                        <ManualAssignmentButton
+                          dutySlotId={slot.id}
+                          gymId={slot.assignments.find((a) => a.gym.name === "힘레븐1")?.gymId ?? ""}
+                          gymName="힘레븐1"
+                          users={activeUsers}
+                        />
                       ) : (
                         <span className="text-red-500">미배정</span>
                       )}
@@ -203,6 +218,15 @@ export default async function AdminSchedulePage({
                             isPast={isPast}
                           />
                         </>
+                      ) : slot ? (
+                        <ManualAssignmentButton
+                          dutySlotId={slot.id}
+                          gymId={
+                            slot.assignments.find((a) => a.gym.name === "힘레븐2")?.gymId ?? ""
+                          }
+                          gymName="힘레븐2"
+                          users={activeUsers}
+                        />
                       ) : (
                         <span className="text-red-500">미배정</span>
                       )}
