@@ -40,17 +40,37 @@ export async function ensureDutyLog(assignmentId: string): Promise<DutyLog> {
   });
 }
 
-/** 특정 날짜(요일)에 적용되는 활성 체크리스트 항목(공통 + 그 요일 전용)을 조회한다. */
-export async function getChecklistItemsForDate(date: Date) {
+function getSlotNumber(startTime: string): number {
+  if (startTime === "10:30") return 1;
+  if (startTime === "15:00") return 2;
+  return 3;
+}
+
+/** 특정 직감 시간에 적용되는 활성 체크리스트 항목(공통 + 일정/타임 전용)을 조회한다. */
+export async function getChecklistItemsForSlot(date: Date, startTime: string) {
   const dayOfWeek = date.getUTCDay();
+  const specialDay = await prisma.specialScheduleDay.findUnique({ where: { date } });
+
+  const scopedWhere = specialDay
+    ? { scheduleType: "SPECIAL" as const, slotNumber: getSlotNumber(startTime) }
+    : dayOfWeek === 0 || dayOfWeek === 6
+      ? { scheduleType: "WEEKEND" as const, slotNumber: getSlotNumber(startTime) }
+      : { scheduleType: "REGULAR" as const, dayOfWeek };
+
   return prisma.checklistItem.findMany({
-    where: { active: true, OR: [{ dayOfWeek: null }, { dayOfWeek }] },
+    where: {
+      active: true,
+      OR: [
+        { scheduleType: null, dayOfWeek: null, slotNumber: null },
+        scopedWhere,
+      ],
+    },
     orderBy: { sortOrder: "asc" },
   });
 }
 
-async function ensureChecklistLogs(dutyLogId: string, date: Date) {
-  const items = await getChecklistItemsForDate(date);
+async function ensureChecklistLogs(dutyLogId: string, date: Date, startTime: string) {
+  const items = await getChecklistItemsForSlot(date, startTime);
   await prisma.checklistLog.createMany({
     data: items.map((item) => ({ dutyLogId, checklistItemId: item.id })),
     skipDuplicates: true,
@@ -81,7 +101,11 @@ export async function startDuty(assignmentId: string, userId: string) {
   const graceMinutes = await getLateGraceMinutes();
   const startedLate = now.getTime() > scheduledStart.getTime() + graceMinutes * 60000;
 
-  await ensureChecklistLogs(dutyLog.id, assignment.dutySlot.date);
+  await ensureChecklistLogs(
+    dutyLog.id,
+    assignment.dutySlot.date,
+    assignment.dutySlot.startTime
+  );
 
   return prisma.dutyLog.update({
     where: { id: dutyLog.id },
@@ -123,9 +147,12 @@ export async function endDuty(assignmentId: string, userId: string, issueNote?: 
     throw new DutyLogError("이미 종료된 직감입니다.");
   }
 
-  const requiredItems = (await getChecklistItemsForDate(assignment.dutySlot.date)).filter(
-    (item) => item.required
-  );
+  const requiredItems = (
+    await getChecklistItemsForSlot(
+      assignment.dutySlot.date,
+      assignment.dutySlot.startTime
+    )
+  ).filter((item) => item.required);
   const logs = await prisma.checklistLog.findMany({ where: { dutyLogId: dutyLog.id } });
   const completedIds = new Set(logs.filter((l) => l.completed).map((l) => l.checklistItemId));
   const allRequiredDone = requiredItems.every((item) => completedIds.has(item.id));
