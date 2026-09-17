@@ -212,22 +212,31 @@ model DutyLog {
   @@map("duty_logs")
 }
 
-// dayOfWeek: 0(일)~6(토) 지정 시 해당 요일에만 적용되는 항목. null이면 모든 요일에 공통 적용된다.
-// 특정 직감의 체크리스트는 "공통(dayOfWeek=null) 항목 + 그날 요일 전용 항목"을 합쳐서 구성한다.
+// 공통 항목 또는 평일 요일별/주말 타임별/특별일정 타임별 항목을 저장한다.
+// 실제 직감 체크리스트는 공통 항목과 해당 일정 범위의 항목을 합쳐서 구성한다.
 model ChecklistItem {
-  id        String   @id @default(cuid())
-  name      String
-  required  Boolean  @default(true)
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
-  dayOfWeek Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String                 @id @default(cuid())
+  name         String
+  required     Boolean                @default(true)
+  active       Boolean                @default(true)
+  sortOrder    Int                    @default(0)
+  dayOfWeek    Int?
+  scheduleType ChecklistScheduleType?
+  slotNumber   Int?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
 
   logs ChecklistLog[]
 
   @@index([dayOfWeek])
+  @@index([scheduleType, slotNumber])
   @@map("checklist_items")
+}
+
+enum ChecklistScheduleType {
+  REGULAR
+  WEEKEND
+  SPECIAL
 }
 
 model ChecklistLog {
