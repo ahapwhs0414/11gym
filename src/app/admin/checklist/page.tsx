@@ -1,16 +1,33 @@
 import Link from "next/link";
+import type { ChecklistScheduleType } from "@prisma/client";
 import { requireAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { LogoutButton } from "@/components/logout-button";
 import { CreateChecklistItemForm } from "@/components/admin/create-checklist-item-form";
 import { ChecklistItemRow } from "@/components/admin/checklist-item-row";
 
-const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+type ChecklistScope = {
+  key: string;
+  label: string;
+  scheduleType: ChecklistScheduleType | null;
+  dayOfWeek: number | null;
+  slotNumber: number | null;
+};
 
-function parseScope(scope: string | undefined): number | null {
-  if (scope && /^[0-6]$/.test(scope)) return Number(scope);
-  return null;
-}
+const SCOPES: ChecklistScope[] = [
+  { key: "common", label: "모든 일정 공통", scheduleType: null, dayOfWeek: null, slotNumber: null },
+  { key: "weekday-1", label: "월요일", scheduleType: "REGULAR", dayOfWeek: 1, slotNumber: null },
+  { key: "weekday-2", label: "화요일", scheduleType: "REGULAR", dayOfWeek: 2, slotNumber: null },
+  { key: "weekday-3", label: "수요일", scheduleType: "REGULAR", dayOfWeek: 3, slotNumber: null },
+  { key: "weekday-4", label: "목요일", scheduleType: "REGULAR", dayOfWeek: 4, slotNumber: null },
+  { key: "weekday-5", label: "금요일", scheduleType: "REGULAR", dayOfWeek: 5, slotNumber: null },
+  { key: "weekend-1", label: "주말 1타임", scheduleType: "WEEKEND", dayOfWeek: null, slotNumber: 1 },
+  { key: "weekend-2", label: "주말 2타임", scheduleType: "WEEKEND", dayOfWeek: null, slotNumber: 2 },
+  { key: "weekend-3", label: "주말 3타임", scheduleType: "WEEKEND", dayOfWeek: null, slotNumber: 3 },
+  { key: "special-1", label: "특별일정 1타임", scheduleType: "SPECIAL", dayOfWeek: null, slotNumber: 1 },
+  { key: "special-2", label: "특별일정 2타임", scheduleType: "SPECIAL", dayOfWeek: null, slotNumber: 2 },
+  { key: "special-3", label: "특별일정 3타임", scheduleType: "SPECIAL", dayOfWeek: null, slotNumber: 3 },
+];
 
 export default async function AdminChecklistPage({
   searchParams,
@@ -19,19 +36,17 @@ export default async function AdminChecklistPage({
 }) {
   await requireAdminSession();
   const sp = await searchParams;
-  const isCommonTab = !sp.scope || sp.scope === "common";
-  const dayOfWeek = isCommonTab ? null : parseScope(sp.scope);
+  const scope = SCOPES.find((item) => item.key === sp.scope) ?? SCOPES[0];
 
   const items = await prisma.checklistItem.findMany({
-    where: { active: true, dayOfWeek },
+    where: {
+      active: true,
+      scheduleType: scope.scheduleType,
+      dayOfWeek: scope.dayOfWeek,
+      slotNumber: scope.slotNumber,
+    },
     orderBy: { sortOrder: "asc" },
   });
-
-  const tabs: { key: string; label: string }[] = [
-    { key: "common", label: "모든 요일 공통" },
-    ...DAY_LABELS.map((label, i) => ({ key: String(i), label: `${label}요일` })),
-  ];
-  const activeKey = isCommonTab ? "common" : String(dayOfWeek);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -51,17 +66,17 @@ export default async function AdminChecklistPage({
         </div>
 
         <p className="mb-4 text-sm text-slate-500">
-          직감 종료 전 확인해야 하는 업무 체크리스트를 관리합니다. &quot;모든 요일 공통&quot; 항목은
-          매일 적용되고, 특정 요일 탭에 추가한 항목은 그 요일에만 추가로 적용됩니다.
+          공통 항목은 모든 직감에 적용됩니다. 주말과 특별일정은 1·2·3타임별로 서로 다른
+          체크리스트를 설정할 수 있습니다.
         </p>
 
         <div className="mb-4 flex flex-wrap gap-1.5">
-          {tabs.map((tab) => (
+          {SCOPES.map((tab) => (
             <Link
               key={tab.key}
               href={`/admin/checklist?scope=${tab.key}`}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                activeKey === tab.key
+                scope.key === tab.key
                   ? "bg-teal-700 text-white"
                   : "border border-slate-300 text-slate-600"
               }`}
@@ -72,7 +87,11 @@ export default async function AdminChecklistPage({
         </div>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <CreateChecklistItemForm dayOfWeek={dayOfWeek} />
+          <CreateChecklistItemForm
+            scheduleType={scope.scheduleType}
+            dayOfWeek={scope.dayOfWeek}
+            slotNumber={scope.slotNumber}
+          />
         </section>
 
         <section className="mt-4 space-y-2">
