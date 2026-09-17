@@ -3,7 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function CreateChecklistItemForm({ dayOfWeek }: { dayOfWeek: number | null }) {
+type ScheduleType = "REGULAR" | "WEEKEND" | "SPECIAL";
+
+export function CreateChecklistItemForm({
+  scheduleType,
+  dayOfWeek,
+  slotNumber,
+}: {
+  scheduleType: ScheduleType | null;
+  dayOfWeek: number | null;
+  slotNumber: number | null;
+}) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [required, setRequired] = useState(true);
@@ -20,7 +30,7 @@ export function CreateChecklistItemForm({ dayOfWeek }: { dayOfWeek: number | nul
     const res = await fetch("/api/admin/checklist-items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), required, dayOfWeek }),
+      body: JSON.stringify({ name: name.trim(), required, scheduleType, dayOfWeek, slotNumber }),
     });
     const data = await res.json().catch(() => ({}));
     setLoading(false);
