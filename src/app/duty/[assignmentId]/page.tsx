@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUserSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureDutyLog, getChecklistItemsForDate, isSameKstDay } from "@/lib/duty-log";
+import { ensureDutyLog, getChecklistItemsForSlot, isSameKstDay } from "@/lib/duty-log";
 import { LogoutButton } from "@/components/logout-button";
 import { DutyPanel } from "@/components/duty/duty-panel";
 
@@ -29,7 +29,10 @@ export default async function DutyPage({
   }
 
   const dutyLog = await ensureDutyLog(assignmentId);
-  const checklistItems = await getChecklistItemsForDate(assignment.dutySlot.date);
+  const checklistItems = await getChecklistItemsForSlot(
+    assignment.dutySlot.date,
+    assignment.dutySlot.startTime
+  );
   const checklistLogs = await prisma.checklistLog.findMany({
     where: { dutyLogId: dutyLog.id },
   });
