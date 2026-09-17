@@ -7,7 +7,18 @@ import { writeAuditLog } from "@/lib/audit";
 const createSchema = z.object({
   name: z.string().trim().min(1, "이름을 입력해주세요.").max(100),
   required: z.boolean(),
+  scheduleType: z.enum(["REGULAR", "WEEKEND", "SPECIAL"]).nullable(),
   dayOfWeek: z.number().int().min(0).max(6).nullable(),
+  slotNumber: z.number().int().min(1).max(3).nullable(),
+}).superRefine((data, ctx) => {
+  const common = data.scheduleType === null && data.dayOfWeek === null && data.slotNumber === null;
+  const regular = data.scheduleType === "REGULAR" && data.dayOfWeek !== null
+    && data.dayOfWeek >= 1 && data.dayOfWeek <= 5 && data.slotNumber === null;
+  const timed = (data.scheduleType === "WEEKEND" || data.scheduleType === "SPECIAL")
+    && data.dayOfWeek === null && data.slotNumber !== null;
+  if (!common && !regular && !timed) {
+    ctx.addIssue({ code: "custom", message: "체크리스트 적용 범위가 올바르지 않습니다." });
+  }
 });
 
 export async function POST(request: Request) {
@@ -25,11 +36,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const { name, required, dayOfWeek } = parsed.data;
-  const count = await prisma.checklistItem.count({ where: { dayOfWeek } });
+  const { name, required, scheduleType, dayOfWeek, slotNumber } = parsed.data;
+  const count = await prisma.checklistItem.count({
+    where: { scheduleType, dayOfWeek, slotNumber },
+  });
 
   const created = await prisma.checklistItem.create({
-    data: { name, required, dayOfWeek, sortOrder: count },
+    data: { name, required, scheduleType, dayOfWeek, slotNumber, sortOrder: count },
   });
 
   await writeAuditLog({
@@ -37,7 +50,7 @@ export async function POST(request: Request) {
     action: "CHECKLIST_ITEM_CREATE",
     targetType: "ChecklistItem",
     targetId: created.id,
-    afterData: { name, required, dayOfWeek },
+    afterData: { name, required, scheduleType, dayOfWeek, slotNumber },
   });
 
   return NextResponse.json({ ok: true, id: created.id });
