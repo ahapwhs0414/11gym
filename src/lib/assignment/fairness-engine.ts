@@ -5,9 +5,8 @@
  *   §23 1단계 (필수 조건)      → 호출자가 slotCandidates를 만들 때 이미 필터링해서 전달
  *   §23 동일 날짜 중복 방지    → assignedDates로 슬롯 처리 중 동적으로 제외
  *   §24 3단계 (가능 슬롯 수)   → 슬롯을 후보자 수가 적은(위험한) 순서로 먼저 처리 (우선순위 6)
- *   §25 4단계 (횟수 평준화)    → 후보 정렬 1번째 키: cumulativeCount + workingCount
- *   §22/§28 (희소 사용자 보호) → 후보 정렬 2번째 키: 이번 주 가능 슬롯 수(적을수록 우선)
- *   §29 8순위 (최근 직감일)    → 후보 정렬 3번째 키: 마지막 배정일(오래될수록 우선)
+ *   주간 공평성                 → 후보 정렬 1번째 키: 이번 주 현재 배정 횟수(적을수록 우선)
+ *   가능 시간 우선             → 후보 정렬 2번째 키: 이번 주 가능 슬롯 수(많을수록 우선)
  *   §29 9순위 (동점 시 랜덤)   → 최종 타이브레이커
  *   §30/§31 (헬스장 배정)      → decideGyms()
  */
@@ -31,12 +30,6 @@ export interface SlotInput {
 export interface UserInput {
   id: string;
   gymPreference: GymPreference;
-  /** 이번 실행 이전까지의 전체(누적) 배정 횟수 */
-  cumulativeCount: number;
-  cumulativeGym1Count: number;
-  cumulativeGym2Count: number;
-  /** 가장 최근 배정일(YYYY-MM-DD), 배정된 적 없으면 null */
-  lastAssignedDate: string | null;
   /** 이번 주 본인이 가능하다고 표시한 슬롯 수 */
   availableSlotCountThisWeek: number;
 }
@@ -59,13 +52,8 @@ export interface AssignmentPlan {
 
 interface WorkingUser extends UserInput {
   workingCount: number;
-  workingGym1Count: number;
-  workingGym2Count: number;
-  workingLastAssignedDate: string | null;
   assignedDates: Set<string>;
 }
-
-const NEVER_ASSIGNED_SENTINEL = "0000-00-00";
 
 function other(gym: GymKey): GymKey {
   return gym === "GYM1" ? "GYM2" : "GYM1";
@@ -88,45 +76,22 @@ function decideGyms(p1: WorkingUser, p2: WorkingUser, random: () => number): [Gy
   }
 
   if (pref1 !== "ANY" && pref1 === pref2) {
-    // 둘 다 같은 헬스장을 원함 → 2순위: 그 헬스장 배정 횟수가 적은 사람에게 우선 배정.
-    const target = pref1;
-    const count1 = target === "GYM1" ? p1.workingGym1Count : p1.workingGym2Count;
-    const count2 = target === "GYM1" ? p2.workingGym1Count : p2.workingGym2Count;
-    if (count1 !== count2) {
-      return count1 < count2 ? [target, other(target)] : [other(target), target];
-    }
-    // 3순위: 최근 배정일이 더 오래된 사람에게 우선 배정.
-    const last1 = p1.workingLastAssignedDate ?? NEVER_ASSIGNED_SENTINEL;
-    const last2 = p2.workingLastAssignedDate ?? NEVER_ASSIGNED_SENTINEL;
-    if (last1 !== last2) {
-      return last1 < last2 ? [target, other(target)] : [other(target), target];
-    }
-    // 4순위: 랜덤.
-    return random() < 0.5 ? [target, other(target)] : [other(target), target];
+    // 둘 다 같은 헬스장을 원하면 과거 이력을 보지 않고 랜덤으로 한 명에게 선호 헬스장을 배정한다.
+    return random() < 0.5 ? [pref1, other(pref1)] : [other(pref1), pref1];
   }
 
-  // 둘 다 "상관없음" → 각자의 GYM1/GYM2 이력 비율을 맞추는 방향으로 배정.
-  const diff1 = p1.workingGym1Count - p1.workingGym2Count;
-  const diff2 = p2.workingGym1Count - p2.workingGym2Count;
-  if (diff1 !== diff2) {
-    // GYM2 이력이 상대적으로 많은(diff가 더 작은) 사람에게 이번엔 GYM1을 배정.
-    return diff1 < diff2 ? ["GYM1", "GYM2"] : ["GYM2", "GYM1"];
-  }
+  // 둘 다 "상관없음"이면 과거 이력을 보지 않고 랜덤 배정한다.
   return random() < 0.5 ? ["GYM1", "GYM2"] : ["GYM2", "GYM1"];
 }
 
 function compareCandidates(a: WorkingUser, b: WorkingUser): number {
-  const totalA = a.cumulativeCount + a.workingCount;
-  const totalB = b.cumulativeCount + b.workingCount;
-  if (totalA !== totalB) return totalA - totalB;
+  // 1순위: 이번 주 배정 횟수를 최대한 균등하게 유지한다.
+  if (a.workingCount !== b.workingCount) return a.workingCount - b.workingCount;
 
+  // 2순위: 같은 횟수라면 이번 주 가능한 타임이 많은 사람을 우선한다.
   if (a.availableSlotCountThisWeek !== b.availableSlotCountThisWeek) {
-    return a.availableSlotCountThisWeek - b.availableSlotCountThisWeek;
+    return b.availableSlotCountThisWeek - a.availableSlotCountThisWeek;
   }
-
-  const lastA = a.workingLastAssignedDate ?? NEVER_ASSIGNED_SENTINEL;
-  const lastB = b.workingLastAssignedDate ?? NEVER_ASSIGNED_SENTINEL;
-  if (lastA !== lastB) return lastA < lastB ? -1 : 1;
 
   return 0;
 }
@@ -146,9 +111,6 @@ export function assignWeek(params: {
       {
         ...u,
         workingCount: 0,
-        workingGym1Count: u.cumulativeGym1Count,
-        workingGym2Count: u.cumulativeGym2Count,
-        workingLastAssignedDate: u.lastAssignedDate,
         assignedDates: new Set<string>(),
       },
     ])
@@ -216,9 +178,6 @@ function applyAssignment(
   assignments.push({ slotId: slot.id, gym, userId: user.id });
   user.workingCount += 1;
   user.assignedDates.add(slot.date);
-  user.workingLastAssignedDate = slot.date;
-  if (gym === "GYM1") user.workingGym1Count += 1;
-  else user.workingGym2Count += 1;
 }
 
 /** compareCandidates 기준으로 완전히 동점인 인접 구간만 랜덤 셔플한다 (§29 9순위). */
