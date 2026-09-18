@@ -38,8 +38,12 @@ export function VotingClosurePanel({
       setError(data.error ?? "마감에 실패했습니다.");
       return;
     }
+    const fairness = data.result.fairness;
     setResult(
-      `배정 완료: ${data.result.createdAssignments}건 생성, 미배정 ${data.result.understaffedSlots.length}건`
+      `배정 완료: ${data.result.createdAssignments}건 생성, 미배정 ${data.result.understaffedSlots.length}건` +
+        (fairness
+          ? ` · 공평성 검증 최적(최대 ${fairness.maximum}회 / 최소 ${fairness.minimum}회 / 차이 ${fairness.spread}회)`
+          : "")
     );
     router.refresh();
   }

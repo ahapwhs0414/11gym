@@ -10,8 +10,17 @@ type Slot = {
   startTime: string;
   endTime: string;
   available: boolean;
+  preferred: boolean;
   voteCount: number;
 };
+
+type VoteState = "UNAVAILABLE" | "AVAILABLE" | "PREFERRED";
+
+const VOTE_OPTIONS: Array<{ value: VoteState; label: string }> = [
+  { value: "UNAVAILABLE", label: "불가능" },
+  { value: "AVAILABLE", label: "가능" },
+  { value: "PREFERRED", label: "⭐ 선호" },
+];
 
 export function AvailabilityForm({
   slots,
@@ -25,8 +34,13 @@ export function AvailabilityForm({
   const router = useRouter();
   const initialAllUnavailable = hasSubmitted && slots.every((s) => !s.available);
 
-  const [values, setValues] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(slots.map((s) => [s.id, s.available]))
+  const [values, setValues] = useState<Record<string, VoteState>>(() =>
+    Object.fromEntries(
+      slots.map((s) => [
+        s.id,
+        s.preferred ? "PREFERRED" : s.available ? "AVAILABLE" : "UNAVAILABLE",
+      ])
+    )
   );
   const [allUnavailable, setAllUnavailable] = useState(initialAllUnavailable);
   const [error, setError] = useState<string | null>(null);
@@ -44,10 +58,10 @@ export function AvailabilityForm({
     return Array.from(map.entries());
   }, [slots]);
 
-  function toggleSlot(id: string) {
+  function setSlotState(id: string, state: VoteState) {
     setSaved(false);
     setAllUnavailable(false);
-    setValues((prev) => ({ ...prev, [id]: !prev[id] }));
+    setValues((prev) => ({ ...prev, [id]: state }));
   }
 
   function toggleAllUnavailable() {
@@ -65,7 +79,10 @@ export function AvailabilityForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           allUnavailable,
-          slots: slots.map((s) => ({ slotId: s.id, available: values[s.id] ?? false })),
+          slots: slots.map((s) => ({
+            slotId: s.id,
+            state: allUnavailable ? "UNAVAILABLE" : values[s.id] ?? "UNAVAILABLE",
+          })),
         }),
       });
       const data = await res.json();
@@ -93,30 +110,47 @@ export function AvailabilityForm({
             </p>
             <div className="mt-2 space-y-2">
               {daySlots.map((slot) => {
-                const checked = allUnavailable ? false : values[slot.id] ?? false;
+                const selected = allUnavailable
+                  ? "UNAVAILABLE"
+                  : values[slot.id] ?? "UNAVAILABLE";
                 return (
-                  <label
+                  <div
                     key={slot.id}
-                    className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${
+                    className={`rounded-xl border px-3 py-3 text-sm ${
                       allUnavailable
                         ? "border-slate-100 bg-slate-50 text-slate-400"
                         : "border-slate-200"
                     }`}
                   >
-                    <span className="flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-2">
                       <span>
                         {slot.startTime} ~ {slot.endTime}
                       </span>
-                      <span>{slot.voteCount}명</span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={allUnavailable || readOnly}
-                      onChange={() => toggleSlot(slot.id)}
-                      className="h-5 w-5 accent-teal-700"
-                    />
-                  </label>
+                      <span className="text-xs text-slate-500">가능 {slot.voteCount}명</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
+                      {VOTE_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          disabled={allUnavailable || readOnly}
+                          onClick={() => setSlotState(slot.id, option.value)}
+                          aria-pressed={selected === option.value}
+                          className={`rounded-md px-2 py-2 text-xs font-medium transition ${
+                            selected === option.value
+                              ? option.value === "PREFERRED"
+                                ? "bg-amber-100 text-amber-800 shadow-sm"
+                                : option.value === "AVAILABLE"
+                                  ? "bg-teal-700 text-white shadow-sm"
+                                  : "bg-white text-slate-700 shadow-sm"
+                              : "text-slate-500 hover:bg-white/70"
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 );
               })}
             </div>

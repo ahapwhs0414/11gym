@@ -22,6 +22,13 @@ export interface WeeklyAssignmentResult {
   alreadyAssigned: boolean;
   createdAssignments: number;
   understaffedSlots: { slotId: string; date: string; startTime: string; gym: GymKey }[];
+  fairness: {
+    maximum: number;
+    minimum: number;
+    spread: number;
+    sumSquares: number;
+    optimal: boolean;
+  } | null;
 }
 
 /**
@@ -64,21 +71,29 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
       alreadyAssigned: true,
       createdAssignments: 0,
       understaffedSlots: [],
+      fairness: null,
     };
   }
 
-  // 자동 배정은 과거 직감 이력을 사용하지 않는다. 이번 주 투표와 이번 주 배정 횟수만 사용한다.
+  // 자동 배정은 과거 직감 이력을 사용하지 않는다. 이번 주 전체 투표와 이미 존재하는
+  // 이번 주 배정만 사용한다. pending 슬롯만 조회하면 재실행 시 가능 타임 수가 달라질 수 있다.
   const [activeUsers, availabilityRows] = await Promise.all([
     prisma.user.findMany({ where: { role: "USER", status: "ACTIVE" } }),
     prisma.availability.findMany({
-      where: { dutySlotId: { in: pendingSlots.map((s) => s.id) }, available: true },
+      where: { dutySlotId: { in: slotIds }, available: true },
     }),
   ]);
   const candidatesBySlot = new Map<string, string[]>();
+  const preferredCandidatesBySlot = new Map<string, string[]>();
   for (const row of availabilityRows) {
     const arr = candidatesBySlot.get(row.dutySlotId) ?? [];
     arr.push(row.userId);
     candidatesBySlot.set(row.dutySlotId, arr);
+    if (row.preferred) {
+      const preferred = preferredCandidatesBySlot.get(row.dutySlotId) ?? [];
+      preferred.push(row.userId);
+      preferredCandidatesBySlot.set(row.dutySlotId, preferred);
+    }
   }
 
   const availableCountByUser = new Map<string, number>();
@@ -101,6 +116,8 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
     id: u.id,
     gymPreference: u.gymPreference,
     availableSlotCountThisWeek: availableCountByUser.get(u.id) ?? 0,
+    initialAssignmentCount: existingAssignments.filter((a) => a.userId === u.id).length,
+    initiallyAssignedDates: [...(assignedDatesByUser.get(u.id) ?? new Set<string>())],
   }));
 
   const slotInputs: SlotInput[] = pendingSlots.map((s) => ({
@@ -112,6 +129,7 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
 
   // 이미 다른 슬롯에 배정된 날짜를 가진 사용자를 이번 배정 대상 후보에서 제외한다.
   const filteredCandidates = new Map<string, string[]>();
+  const filteredPreferredCandidates = new Map<string, string[]>();
   for (const slot of pendingSlots) {
     const dateStr = toDateOnly(slot.date);
     const ids = (candidatesBySlot.get(slot.id) ?? []).filter((userId) => {
@@ -120,12 +138,30 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
       return !assignedDatesByUser.get(userId)?.has(dateStr);
     });
     filteredCandidates.set(slot.id, ids);
+    const preferredIds = (preferredCandidatesBySlot.get(slot.id) ?? []).filter((userId) =>
+      ids.includes(userId)
+    );
+    filteredPreferredCandidates.set(slot.id, preferredIds);
   }
+
+  const seed = JSON.stringify({
+    weekStart: toDateOnly(weekStart),
+    users: [...activeUsers]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((u) => [u.id, u.gymPreference]),
+    votes: [...availabilityRows]
+      .sort((a, b) =>
+        `${a.dutySlotId}:${a.userId}`.localeCompare(`${b.dutySlotId}:${b.userId}`)
+      )
+      .map((row) => [row.dutySlotId, row.userId, row.preferred]),
+  });
 
   const plan = assignWeek({
     slots: slotInputs,
     users: userInputs,
     slotCandidates: filteredCandidates,
+    preferredSlotCandidates: filteredPreferredCandidates,
+    seed,
   });
 
   await prisma.$transaction(async (tx) => {
@@ -186,6 +222,13 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
     alreadyAssigned: false,
     createdAssignments: plan.assignments.length,
     understaffedSlots,
+    fairness: {
+      maximum: plan.fairness.maximum,
+      minimum: plan.fairness.minimum,
+      spread: plan.fairness.spread,
+      sumSquares: plan.fairness.sumSquares,
+      optimal: plan.fairness.optimal,
+    },
   };
 }
 

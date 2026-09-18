@@ -45,7 +45,9 @@ export default async function AvailabilityPage() {
     }),
   ]);
 
-  const availableMap = new Map(existing.map((a) => [a.dutySlotId, a.available]));
+  const availabilityMap = new Map(
+    existing.map((a) => [a.dutySlotId, { available: a.available, preferred: a.preferred }])
+  );
   const voteCountMap = new Map(
     voteCounts.map((item) => [item.dutySlotId, item._count._all])
   );
@@ -56,7 +58,8 @@ export default async function AvailabilityPage() {
     dateLabel: formatDate(slot.date),
     startTime: slot.startTime,
     endTime: slot.endTime,
-    available: availableMap.get(slot.id) ?? false,
+    available: availabilityMap.get(slot.id)?.available ?? false,
+    preferred: availabilityMap.get(slot.id)?.preferred ?? false,
     voteCount: voteCountMap.get(slot.id) ?? 0,
   }));
 
@@ -96,7 +99,8 @@ export default async function AvailabilityPage() {
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="mb-4 text-xs text-slate-500">
-            기본값은 모두 &ldquo;불가능&rdquo;입니다. 직감을 설 수 있는 시간만 켜주세요.
+            각 타임을 불가능·가능·⭐ 선호 중에서 선택하세요. 선호도 가능 타임 1개로
+            계산되며, 공평성이 같은 경우에만 우선 반영됩니다.
           </p>
           <AvailabilityForm slots={formSlots} hasSubmitted={hasSubmitted} readOnly={!!closure} />
         </div>

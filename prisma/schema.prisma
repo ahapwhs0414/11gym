@@ -125,6 +125,8 @@ model Availability {
   userId     String
   dutySlotId String
   available  Boolean  @default(false)
+  // true이면 available도 반드시 true로 저장한다. 선호 타임은 가능 타임 1개로만 계산한다.
+  preferred  Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

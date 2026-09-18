@@ -39,8 +39,12 @@ export default async function AdminStatisticsPage({
   ]);
 
   const availableCountByUser = new Map<string, number>();
+  const preferredCountByUser = new Map<string, number>();
   for (const row of weekAvailability) {
     availableCountByUser.set(row.userId, (availableCountByUser.get(row.userId) ?? 0) + 1);
+    if (row.preferred) {
+      preferredCountByUser.set(row.userId, (preferredCountByUser.get(row.userId) ?? 0) + 1);
+    }
   }
   const weekAssignedCountByUser = new Map<string, number>();
   for (const a of weekAssignments) {
@@ -59,6 +63,12 @@ export default async function AdminStatisticsPage({
     const prev = lastDateByUser.get(a.userId);
     if (!prev || dateStr > prev) lastDateByUser.set(a.userId, dateStr);
   }
+
+  const participatingCounts = users
+    .filter((u) => (availableCountByUser.get(u.id) ?? 0) > 0)
+    .map((u) => weekAssignedCountByUser.get(u.id) ?? 0);
+  const weeklyMaximum = participatingCounts.length > 0 ? Math.max(...participatingCounts) : 0;
+  const weeklyMinimum = participatingCounts.length > 0 ? Math.min(...participatingCounts) : 0;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -95,12 +105,30 @@ export default async function AdminStatisticsPage({
           </Link>
         </div>
 
+        <div className="mb-4 grid grid-cols-3 gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-center">
+          <div>
+            <p className="text-xs text-slate-500">최대 배정</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{weeklyMaximum}회</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">최소 배정</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{weeklyMinimum}회</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">현재 차이</p>
+            <p className="mt-1 text-lg font-bold text-teal-700">
+              {weeklyMaximum - weeklyMinimum}회
+            </p>
+          </div>
+        </div>
+
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
               <tr>
                 <th className="px-4 py-2">사용자</th>
                 <th className="px-4 py-2 text-right">가능 슬롯(주)</th>
+                <th className="px-4 py-2 text-right">선호 타임(주)</th>
                 <th className="px-4 py-2 text-right">배정 횟수(주)</th>
                 <th className="px-4 py-2 text-right">배정률</th>
                 <th className="px-4 py-2">최근 직감일</th>
@@ -121,6 +149,9 @@ export default async function AdminStatisticsPage({
                       </Link>
                     </td>
                     <td className="px-4 py-2 text-right text-slate-600">{available}</td>
+                    <td className="px-4 py-2 text-right text-amber-700">
+                      {preferredCountByUser.get(u.id) ?? 0}
+                    </td>
                     <td className="px-4 py-2 text-right text-slate-600">{assigned}</td>
                     <td className="px-4 py-2 text-right text-slate-600">{rate}</td>
                     <td className="px-4 py-2 text-slate-500">{lastDateByUser.get(u.id) ?? "-"}</td>
@@ -135,7 +166,7 @@ export default async function AdminStatisticsPage({
               })}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                     사용자가 없습니다.
                   </td>
                 </tr>

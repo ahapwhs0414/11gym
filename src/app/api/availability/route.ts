@@ -14,7 +14,7 @@ const voteSchema = z.object({
   slots: z.array(
     z.object({
       slotId: z.string().min(1),
-      available: z.boolean(),
+      state: z.enum(["UNAVAILABLE", "AVAILABLE", "PREFERRED"]),
     })
   ),
 });
@@ -54,11 +54,13 @@ export async function POST(request: Request) {
   await prisma.$transaction(
     weekSlots.map((slot) => {
       const submitted = slots.find((s) => s.slotId === slot.id);
-      const available = allUnavailable ? false : submitted?.available ?? false;
+      const state = allUnavailable ? "UNAVAILABLE" : submitted?.state ?? "UNAVAILABLE";
+      const available = state !== "UNAVAILABLE";
+      const preferred = state === "PREFERRED";
       return prisma.availability.upsert({
         where: { userId_dutySlotId: { userId: session.userId!, dutySlotId: slot.id } },
-        create: { userId: session.userId!, dutySlotId: slot.id, available },
-        update: { available },
+        create: { userId: session.userId!, dutySlotId: slot.id, available, preferred },
+        update: { available, preferred },
       });
     })
   );
