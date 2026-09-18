@@ -67,25 +67,13 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
     };
   }
 
-  // 아래 다섯 쿼리는 서로 독립적이므로 병렬로 실행해 왕복 지연을 줄인다.
-  // 특히 누적 통계는 예전처럼 DutyAssignment 전체 이력을 통째로 읽어와 자바스크립트로
-  // 집계하면 이력이 쌓일수록(주마다 계속 늘어남) 갈수록 느려지므로, DB에서 집계해서
-  // 사용자 수만큼의 행만 받아오도록 바꿨다.
-  const [activeUsers, availabilityRows, countByUser, countByUserGym, lastDateRows] =
-    await Promise.all([
-      prisma.user.findMany({ where: { role: "USER", status: "ACTIVE" } }),
-      prisma.availability.findMany({
-        where: { dutySlotId: { in: pendingSlots.map((s) => s.id) }, available: true },
-      }),
-      prisma.dutyAssignment.groupBy({ by: ["userId"], _count: { _all: true } }),
-      prisma.dutyAssignment.groupBy({ by: ["userId", "gymId"], _count: { _all: true } }),
-      prisma.$queryRaw<{ userId: string; lastDate: Date }[]>`
-        SELECT da."userId" AS "userId", MAX(ds."date") AS "lastDate"
-        FROM duty_assignments da
-        JOIN duty_slots ds ON ds.id = da."dutySlotId"
-        GROUP BY da."userId"
-      `,
-    ]);
+  // 자동 배정은 과거 직감 이력을 사용하지 않는다. 이번 주 투표와 이번 주 배정 횟수만 사용한다.
+  const [activeUsers, availabilityRows] = await Promise.all([
+    prisma.user.findMany({ where: { role: "USER", status: "ACTIVE" } }),
+    prisma.availability.findMany({
+      where: { dutySlotId: { in: pendingSlots.map((s) => s.id) }, available: true },
+    }),
+  ]);
   const candidatesBySlot = new Map<string, string[]>();
   for (const row of availabilityRows) {
     const arr = candidatesBySlot.get(row.dutySlotId) ?? [];
@@ -109,26 +97,9 @@ export async function runWeeklyAssignment(weekStart: Date): Promise<WeeklyAssign
     assignedDatesByUser.set(a.userId, set);
   }
 
-  const cumulativeCount = new Map<string, number>(
-    countByUser.map((r) => [r.userId, r._count._all])
-  );
-  const cumulativeGym1 = new Map<string, number>();
-  const cumulativeGym2 = new Map<string, number>();
-  for (const r of countByUserGym) {
-    if (r.gymId === gymIdByKey.GYM1) cumulativeGym1.set(r.userId, r._count._all);
-    else if (r.gymId === gymIdByKey.GYM2) cumulativeGym2.set(r.userId, r._count._all);
-  }
-  const lastAssignedDate = new Map<string, string>(
-    lastDateRows.map((r) => [r.userId, toDateOnly(r.lastDate)])
-  );
-
   const userInputs: UserInput[] = activeUsers.map((u) => ({
     id: u.id,
     gymPreference: u.gymPreference,
-    cumulativeCount: cumulativeCount.get(u.id) ?? 0,
-    cumulativeGym1Count: cumulativeGym1.get(u.id) ?? 0,
-    cumulativeGym2Count: cumulativeGym2.get(u.id) ?? 0,
-    lastAssignedDate: lastAssignedDate.get(u.id) ?? null,
     availableSlotCountThisWeek: availableCountByUser.get(u.id) ?? 0,
   }));
 
